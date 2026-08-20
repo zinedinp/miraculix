@@ -4,11 +4,11 @@ version = "0.1.5-alpha"
 authors = ["Zinedin Polic"]
 edition = "2024"
 rust-version = "1.94.0"
-description = "Safe Wrapper for unsafe rust SIMD implementation"
+description = "Safe wrapper for CPU SIMD implementation"
 readme = "README.md"
 repository = "https://github.com/zinezockt/miraculix"
 license = "MIT OR Apache-2.0"
-keywords = ["pulp", "SIMD", "AVX", "AVX2", "AVX512", "SSE", "SSE2", "SSE3", "SSSE3", "SSE4", "SME", "NEON", "vector processor"]
+keywords = ["simd", "avx", "avx512", "sse", "neon"]
 categories = ["hardware-support"]
 
 [features]
