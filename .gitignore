@@ -1,0 +1,10 @@
+debug
+target
+vendor
+/resources
+
+**/*.rs.bk
+
+*.pdb
+
+**/mutants.out*/

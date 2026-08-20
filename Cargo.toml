@@ -1,0 +1,68 @@
+[package]
+name = "miraculix"
+version = "0.1.5-alpha"
+authors = ["Zinedin Polic"]
+edition = "2024"
+rust-version = "1.94.0"
+description = "Safe Wrapper for unsafe rust SIMD implementation"
+readme = "README.md"
+repository = "https://github.com/zinezockt/miraculix"
+license = "MIT OR Apache-2.0"
+keywords = ["pulp", "SIMD", "AVX", "AVX2", "AVX512", "SSE", "SSE2", "SSE3", "SSSE3", "SSE4", "SME", "NEON", "vector processor"]
+categories = ["hardware-support"]
+
+[features]
+default = ["wider-bus-lift"]
+# core::arch::powerpc64's vec_add/vec_sub/vec_xl/vec_xst and the "altivec"
+# target-feature are unstable (stdarch_powerpc, powerpc_target_feature);
+# opt in only on a nightly toolchain.
+nightly-altivec = []
+# core::arch::x86_64's _xbegin/_xend/_xtest (stdarch_x86_rtm) and the "rtm"
+# target-feature (rtm_target_feature) are both unstable; opt in only on a
+# nightly toolchain.
+nightly-rtm = []
+# core::arch::arm's DSP/SIMD32 intrinsics (stdarch_arm_dsp) and Neon
+# intrinsics (stdarch_arm_neon_intrinsics), plus the "dsp"/"neon"
+# target-features (arm_target_feature), are all unstable; opt in only on a
+# nightly toolchain.
+nightly-arm-neon = []
+# Native Xeon Phi (Knights Landing/Knights Mill, both EOL since 2020) ops:
+# AVX512_4FMAPS, AVX512_4VNNIW, AVX512ER, AVX512PF.
+phi-asm = []
+# EXPERIMENTAL, default-on. Extra `auto_up` dispatch rung between adjacent
+# SIMD tiers (SSE->AVX, AVX2->AVX-512): two narrower chains on a wider bus
+# instead of one.
+wider-bus-lift = []
+
+[dependencies]
+
+[dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
+half = "2.7.1"
+
+[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
+raw-cpuid = { version = "11.6.0", default-features = false }
+
+# OS probes only (not bare-metal / none): getauxval or elf_aux_info / sysctl.
+[target.'cfg(all(any(target_arch = "aarch64", target_arch = "arm", target_arch = "riscv32", target_arch = "riscv64", target_arch = "loongarch32", target_arch = "loongarch64", target_arch = "powerpc", target_arch = "powerpc64"), any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "freebsd")))'.dependencies]
+libc = { version = "0.2.189", default-features = false }
+
+[target.'cfg(all(target_arch = "aarch64", target_os = "windows"))'.dependencies]
+windows-sys = { version = ">=0.59, <=0.61", default-features = false, features = ["Win32_System_Threading"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false
+debug-assertions = false
+overflow-checks = false
+strip = "symbols"
+incremental = false
+panic = "abort"
+
+# Same codegen as release, but keep line tables for perf/flamegraph.
+[profile.bench]
+inherits = "release"
+debug = true
+strip = "none"
