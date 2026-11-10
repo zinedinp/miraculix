@@ -31,66 +31,66 @@ macro_rules! crc32_step {
 }
 
 impl Crc32 {
-	/// Probe once: `Some(token)` if the CRC32 extension is available, else `None`.
-	pub fn detect() -> Option<Self> {
-		Self::from_features(FeatureSet::detect())
-	}
+    /// Probe once: `Some(token)` if the CRC32 extension is available, else `None`.
+    pub fn detect() -> Option<Self> {
+        Self::from_features(FeatureSet::detect())
+    }
 
-	/// Build a token from an existing [`crate::aarch32::FeatureSet`].
-	///
-	/// Returns `None` if `Feature::Crc32` is missing.
-	pub fn from_features(set: FeatureSet) -> Option<Self> {
-		set.contains(Feature::Crc32).then_some(Crc32(()))
-	}
+    /// Build a token from an existing [`crate::aarch32::FeatureSet`].
+    ///
+    /// Returns `None` if `Feature::Crc32` is missing.
+    pub fn from_features(set: FeatureSet) -> Option<Self> {
+        set.contains(Feature::Crc32).then_some(Crc32(()))
+    }
 
-	crc32_step!(
-		/// `CRC32B`: fold one byte into `crc` (CRC-32/IEEE).
-		crc32b,
-		u8,
-		__crc32b
-	);
-	crc32_step!(
-		/// `CRC32H`: fold one halfword into `crc` (CRC-32/IEEE).
-		crc32h,
-		u16,
-		__crc32h
-	);
-	crc32_step!(
-		/// `CRC32W`: fold one word into `crc` (CRC-32/IEEE).
-		crc32w,
-		u32,
-		__crc32w
-	);
-	crc32_step!(
-		/// `CRC32D`: fold one doubleword into `crc` (CRC-32/IEEE).
-		crc32d,
-		u64,
-		__crc32d
-	);
-	crc32_step!(
-		/// `CRC32CB`: fold one byte into `crc` (CRC-32C/Castagnoli).
-		crc32cb,
-		u8,
-		__crc32cb
-	);
-	crc32_step!(
-		/// `CRC32CH`: fold one halfword into `crc` (CRC-32C/Castagnoli).
-		crc32ch,
-		u16,
-		__crc32ch
-	);
-	crc32_step!(
-		/// `CRC32CW`: fold one word into `crc` (CRC-32C/Castagnoli).
-		crc32cw,
-		u32,
-		__crc32cw
-	);
-	crc32_step!(
-		/// `CRC32CD`: fold one doubleword into `crc` (CRC-32C/Castagnoli).
-		crc32cd,
-		u64,
-		__crc32cd
-	);
+    crc32_step!(
+        /// `CRC32B`: fold one byte into `crc` (CRC-32/IEEE).
+        crc32b,
+        u8,
+        __crc32b
+    );
+    crc32_step!(
+        /// `CRC32H`: fold one halfword into `crc` (CRC-32/IEEE).
+        crc32h,
+        u16,
+        __crc32h
+    );
+    crc32_step!(
+        /// `CRC32W`: fold one word into `crc` (CRC-32/IEEE).
+        crc32w,
+        u32,
+        __crc32w
+    );
+    crc32_step!(
+        /// `CRC32D`: fold one doubleword into `crc` (CRC-32/IEEE).
+        crc32d,
+        u64,
+        __crc32d
+    );
+    crc32_step!(
+        /// `CRC32CB`: fold one byte into `crc` (CRC-32C/Castagnoli).
+        crc32cb,
+        u8,
+        __crc32cb
+    );
+    crc32_step!(
+        /// `CRC32CH`: fold one halfword into `crc` (CRC-32C/Castagnoli).
+        crc32ch,
+        u16,
+        __crc32ch
+    );
+    crc32_step!(
+        /// `CRC32CW`: fold one word into `crc` (CRC-32C/Castagnoli).
+        crc32cw,
+        u32,
+        __crc32cw
+    );
+    crc32_step!(
+        /// `CRC32CD`: fold one doubleword into `crc` (CRC-32C/Castagnoli).
+        crc32cd,
+        u64,
+        __crc32cd
+    );
 }
 
 #[cfg(test)]

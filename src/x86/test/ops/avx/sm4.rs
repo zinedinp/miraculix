@@ -38,112 +38,149 @@ const CK: [u32; 32] = [
 ];
 
 fn rol32(x: u32, n: u32) -> u32 {
-	x.rotate_left(n)
+    x.rotate_left(n)
 }
 fn sbox_word(x: u32) -> u32 {
-	let bytes = x.to_be_bytes();
-	let out = bytes.map(|b| SBOX[b as usize]);
-	u32::from_be_bytes(out)
+    let bytes = x.to_be_bytes();
+    let out = bytes.map(|b| SBOX[b as usize]);
+    u32::from_be_bytes(out)
 }
 fn l_key(x: u32) -> u32 {
-	x ^ rol32(x, 13) ^ rol32(x, 23)
+    x ^ rol32(x, 13) ^ rol32(x, 23)
 }
 fn l_rnd(x: u32) -> u32 {
-	x ^ rol32(x, 2) ^ rol32(x, 10) ^ rol32(x, 18) ^ rol32(x, 24)
+    x ^ rol32(x, 2) ^ rol32(x, 10) ^ rol32(x, 18) ^ rol32(x, 24)
 }
 
 fn slide4_software(a: [u32; 4], round_key: [u32; 4], l: fn(u32) -> u32) -> [u32; 4] {
-	let mut x = [a[0], a[1], a[2], a[3], 0, 0, 0, 0];
-	for i in 0..4 {
-		x[i + 4] = x[i] ^ l(sbox_word(x[i + 1] ^ x[i + 2] ^ x[i + 3] ^ round_key[i]));
-	}
-	[x[4], x[5], x[6], x[7]]
+    let mut x = [a[0], a[1], a[2], a[3], 0, 0, 0, 0];
+    for i in 0..4 {
+        x[i + 4] = x[i] ^ l(sbox_word(x[i + 1] ^ x[i + 2] ^ x[i + 3] ^ round_key[i]));
+    }
+    [x[4], x[5], x[6], x[7]]
 }
 
 fn key_schedule_software(key: [u32; 4]) -> [u32; 32] {
-	let mut k = [key[0] ^ FK[0], key[1] ^ FK[1], key[2] ^ FK[2], key[3] ^ FK[3]];
-	let mut rk = [0u32; 32];
-	for group in 0..8 {
-		let ck4 = [CK[group * 4], CK[group * 4 + 1], CK[group * 4 + 2], CK[group * 4 + 3]];
-		k = slide4_software(k, ck4, l_key);
-		rk[group * 4..group * 4 + 4].copy_from_slice(&k);
-	}
-	rk
+    let mut k = [
+        key[0] ^ FK[0],
+        key[1] ^ FK[1],
+        key[2] ^ FK[2],
+        key[3] ^ FK[3],
+    ];
+    let mut rk = [0u32; 32];
+    for group in 0..8 {
+        let ck4 = [
+            CK[group * 4],
+            CK[group * 4 + 1],
+            CK[group * 4 + 2],
+            CK[group * 4 + 3],
+        ];
+        k = slide4_software(k, ck4, l_key);
+        rk[group * 4..group * 4 + 4].copy_from_slice(&k);
+    }
+    rk
 }
 
 fn encrypt_block_software(plaintext: [u32; 4], rk: &[u32; 32]) -> [u32; 4] {
-	let mut x = plaintext;
-	for group in 0..8 {
-		let rk4 = [rk[group * 4], rk[group * 4 + 1], rk[group * 4 + 2], rk[group * 4 + 3]];
-		x = slide4_software(x, rk4, l_rnd);
-	}
-	[x[3], x[2], x[1], x[0]]
+    let mut x = plaintext;
+    for group in 0..8 {
+        let rk4 = [
+            rk[group * 4],
+            rk[group * 4 + 1],
+            rk[group * 4 + 2],
+            rk[group * 4 + 3],
+        ];
+        x = slide4_software(x, rk4, l_rnd);
+    }
+    [x[3], x[2], x[1], x[0]]
 }
 
 fn sm4_ecb_encrypt_software(key: [u8; 16], plaintext: [u8; 16]) -> [u8; 16] {
-	let key_words: [u32; 4] = core::array::from_fn(|i| u32::from_be_bytes(key[i * 4..i * 4 + 4].try_into().unwrap()));
-	let pt_words: [u32; 4] = core::array::from_fn(|i| u32::from_be_bytes(plaintext[i * 4..i * 4 + 4].try_into().unwrap()));
-	let rk = key_schedule_software(key_words);
-	let ct_words = encrypt_block_software(pt_words, &rk);
-	let mut out = [0u8; 16];
-	for i in 0..4 {
-		out[i * 4..i * 4 + 4].copy_from_slice(&ct_words[i].to_be_bytes());
-	}
-	out
+    let key_words: [u32; 4] =
+        core::array::from_fn(|i| u32::from_be_bytes(key[i * 4..i * 4 + 4].try_into().unwrap()));
+    let pt_words: [u32; 4] = core::array::from_fn(|i| {
+        u32::from_be_bytes(plaintext[i * 4..i * 4 + 4].try_into().unwrap())
+    });
+    let rk = key_schedule_software(key_words);
+    let ct_words = encrypt_block_software(pt_words, &rk);
+    let mut out = [0u8; 16];
+    for i in 0..4 {
+        out[i * 4..i * 4 + 4].copy_from_slice(&ct_words[i].to_be_bytes());
+    }
+    out
 }
 
 fn hex(bytes: &[u8]) -> String {
-	bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 // GB/T vector via `openssl enc -sm4-ecb`. Software always runs (no SM4 silicon here).
 #[test]
 fn software_reference_matches_openssl_standard_test_vector() {
-	let key_hex = "0123456789abcdeffedcba9876543210";
-	let key: [u8; 16] = (0..16).map(|i| u8::from_str_radix(&key_hex[i * 2..i * 2 + 2], 16).unwrap()).collect::<Vec<_>>().try_into().unwrap();
-	let plaintext = key;
-	let ciphertext = sm4_ecb_encrypt_software(key, plaintext);
-	assert_eq!(hex(&ciphertext), "681edf34d206965e86b3e94f536e4246");
+    let key_hex = "0123456789abcdeffedcba9876543210";
+    let key: [u8; 16] = (0..16)
+        .map(|i| u8::from_str_radix(&key_hex[i * 2..i * 2 + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let plaintext = key;
+    let ciphertext = sm4_ecb_encrypt_software(key, plaintext);
+    assert_eq!(hex(&ciphertext), "681edf34d206965e86b3e94f536e4246");
 }
 
 #[test]
 fn hardware_key4_matches_software_reference() {
-	let Some(t) = Sm4::detect() else { return };
-	let a = [1u32, 2, 3, 4];
-	let rk = [0x11111111u32, 0x22222222, 0x33333333, 0x44444444];
-	assert_eq!(t.sm4key4_u32x4(a, rk), slide4_software(a, rk, l_key));
+    let Some(t) = Sm4::detect() else { return };
+    let a = [1u32, 2, 3, 4];
+    let rk = [0x11111111u32, 0x22222222, 0x33333333, 0x44444444];
+    assert_eq!(t.sm4key4_u32x4(a, rk), slide4_software(a, rk, l_key));
 }
 
 #[test]
 fn hardware_rnds4_matches_software_reference() {
-	let Some(t) = Sm4::detect() else { return };
-	let a = [0xdeadbeefu32, 0x12345678, 0xcafebabe, 0x8badf00d];
-	let rk = [0xaaaaaaaau32, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd];
-	assert_eq!(t.sm4rnds4_u32x4(a, rk), slide4_software(a, rk, l_rnd));
+    let Some(t) = Sm4::detect() else { return };
+    let a = [0xdeadbeefu32, 0x12345678, 0xcafebabe, 0x8badf00d];
+    let rk = [0xaaaaaaaau32, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd];
+    assert_eq!(t.sm4rnds4_u32x4(a, rk), slide4_software(a, rk, l_rnd));
 }
 
 #[test]
 fn hardware_encrypt_matches_openssl_standard_test_vector() {
-	let Some(t) = Sm4::detect() else { return };
-	let key: [u32; 4] = [0x01234567, 0x89abcdef, 0xfedcba98, 0x76543210];
-	let mut k = [key[0] ^ FK[0], key[1] ^ FK[1], key[2] ^ FK[2], key[3] ^ FK[3]];
-	let mut rk = [0u32; 32];
-	for group in 0..8 {
-		let ck4 = [CK[group * 4], CK[group * 4 + 1], CK[group * 4 + 2], CK[group * 4 + 3]];
-		k = t.sm4key4_u32x4(k, ck4);
-		rk[group * 4..group * 4 + 4].copy_from_slice(&k);
-	}
+    let Some(t) = Sm4::detect() else { return };
+    let key: [u32; 4] = [0x01234567, 0x89abcdef, 0xfedcba98, 0x76543210];
+    let mut k = [
+        key[0] ^ FK[0],
+        key[1] ^ FK[1],
+        key[2] ^ FK[2],
+        key[3] ^ FK[3],
+    ];
+    let mut rk = [0u32; 32];
+    for group in 0..8 {
+        let ck4 = [
+            CK[group * 4],
+            CK[group * 4 + 1],
+            CK[group * 4 + 2],
+            CK[group * 4 + 3],
+        ];
+        k = t.sm4key4_u32x4(k, ck4);
+        rk[group * 4..group * 4 + 4].copy_from_slice(&k);
+    }
 
-	let plaintext: [u32; 4] = [0x01234567, 0x89abcdef, 0xfedcba98, 0x76543210];
-	let mut x = plaintext;
-	for group in 0..8 {
-		let rk4 = [rk[group * 4], rk[group * 4 + 1], rk[group * 4 + 2], rk[group * 4 + 3]];
-		x = t.sm4rnds4_u32x4(x, rk4);
-	}
-	let ciphertext_words = [x[3], x[2], x[1], x[0]];
-	let mut out = [0u8; 16];
-	for i in 0..4 {
-		out[i * 4..i * 4 + 4].copy_from_slice(&ciphertext_words[i].to_be_bytes());
-	}
-	assert_eq!(hex(&out), "681edf34d206965e86b3e94f536e4246");
+    let plaintext: [u32; 4] = [0x01234567, 0x89abcdef, 0xfedcba98, 0x76543210];
+    let mut x = plaintext;
+    for group in 0..8 {
+        let rk4 = [
+            rk[group * 4],
+            rk[group * 4 + 1],
+            rk[group * 4 + 2],
+            rk[group * 4 + 3],
+        ];
+        x = t.sm4rnds4_u32x4(x, rk4);
+    }
+    let ciphertext_words = [x[3], x[2], x[1], x[0]];
+    let mut out = [0u8; 16];
+    for i in 0..4 {
+        out[i * 4..i * 4 + 4].copy_from_slice(&ciphertext_words[i].to_be_bytes());
+    }
+    assert_eq!(hex(&out), "681edf34d206965e86b3e94f536e4246");
 }

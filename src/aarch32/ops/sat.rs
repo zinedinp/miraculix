@@ -7,7 +7,7 @@
 /// the upstream intrinsic's `static_assert!`.
 #[inline]
 pub fn ssat<const WIDTH: u32>(x: i32) -> i32 {
-	unsafe { core::arch::arm::__ssat::<WIDTH>(x) }
+    unsafe { core::arch::arm::__ssat::<WIDTH>(x) }
 }
 
 /// `USAT`: saturate a signed 32-bit integer to the unsigned range
@@ -15,7 +15,7 @@ pub fn ssat<const WIDTH: u32>(x: i32) -> i32 {
 /// [`ssat`]).
 #[inline]
 pub fn usat<const WIDTH: u32>(x: i32) -> u32 {
-	unsafe { core::arch::arm::__usat::<WIDTH>(x) }
+    unsafe { core::arch::arm::__usat::<WIDTH>(x) }
 }
 
 #[cfg(test)]

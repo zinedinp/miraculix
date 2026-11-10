@@ -26,10 +26,34 @@ macro_rules! k_mask_between {
     };
 }
 
-k_mask_between!(Avx512Dq, mask_between_mask8, u8, 8, "8-bit mask with lanes `[0, n)` active (pairs with `Avx512Dq`'s mask8 ops).");
-k_mask_between!(Avx512f, mask_between_mask16, u16, 16, "16-bit mask with lanes `[0, n)` active (pairs with `Avx512f`'s mask16 ops).");
-k_mask_between!(Avx512Bw, mask_between_mask32, u32, 32, "32-bit mask with lanes `[0, n)` active (pairs with `Avx512Bw`'s mask32 ops).");
-k_mask_between!(Avx512Bw, mask_between_mask64, u64, 64, "64-bit mask with lanes `[0, n)` active (pairs with `Avx512Bw`'s mask64 ops).");
+k_mask_between!(
+    Avx512Dq,
+    mask_between_mask8,
+    u8,
+    8,
+    "8-bit mask with lanes `[0, n)` active (pairs with `Avx512Dq`'s mask8 ops)."
+);
+k_mask_between!(
+    Avx512f,
+    mask_between_mask16,
+    u16,
+    16,
+    "16-bit mask with lanes `[0, n)` active (pairs with `Avx512f`'s mask16 ops)."
+);
+k_mask_between!(
+    Avx512Bw,
+    mask_between_mask32,
+    u32,
+    32,
+    "32-bit mask with lanes `[0, n)` active (pairs with `Avx512Bw`'s mask32 ops)."
+);
+k_mask_between!(
+    Avx512Bw,
+    mask_between_mask64,
+    u64,
+    64,
+    "64-bit mask with lanes `[0, n)` active (pairs with `Avx512Bw`'s mask64 ops)."
+);
 
 #[cfg(test)]
 #[path = "../../../test/ops/avx512/kmask/build.rs"]

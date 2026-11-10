@@ -102,7 +102,7 @@ macro_rules! simd_binop {
 /// lanes instead. Fixed-width only, no slice form: a slice mask would need
 /// its own chunking story, not attempted here.
 macro_rules! simd_binop_masked {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		merge_fn = $merge_fn:ident, zero_fn = $zero_fn:ident,
 		merge_intrinsic_fn = $merge_intrinsic_fn:ident, zero_intrinsic_fn = $zero_intrinsic_fn:ident,
@@ -111,53 +111,71 @@ macro_rules! simd_binop_masked {
 		merge_intrinsic = $merge_intrinsic:path, zero_intrinsic = $zero_intrinsic:path,
 		merge_doc = $merge_doc:literal, zero_doc = $zero_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $merge_doc]
-			#[inline]
-			pub fn $merge_fn(self, src: [$Elem; $width], mask: $Mask, a: [$Elem; $width], b: [$Elem; $width]) -> [$Elem; $width] {
-				unsafe { $merge_intrinsic_fn(&src, mask, &a, &b) }
-			}
+        impl $Token {
+            #[doc = $merge_doc]
+            #[inline]
+            pub fn $merge_fn(
+                self,
+                src: [$Elem; $width],
+                mask: $Mask,
+                a: [$Elem; $width],
+                b: [$Elem; $width],
+            ) -> [$Elem; $width] {
+                unsafe { $merge_intrinsic_fn(&src, mask, &a, &b) }
+            }
 
-			#[doc = $zero_doc]
-			#[inline]
-			pub fn $zero_fn(self, mask: $Mask, a: [$Elem; $width], b: [$Elem; $width]) -> [$Elem; $width] {
-				unsafe { $zero_intrinsic_fn(mask, &a, &b) }
-			}
-		}
+            #[doc = $zero_doc]
+            #[inline]
+            pub fn $zero_fn(
+                self,
+                mask: $Mask,
+                a: [$Elem; $width],
+                b: [$Elem; $width],
+            ) -> [$Elem; $width] {
+                unsafe { $zero_intrinsic_fn(mask, &a, &b) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $merge_intrinsic_fn(
-			src: &[$Elem; $width], mask: $Mask, a: &[$Elem; $width], b: &[$Elem; $width],
-		) -> [$Elem; $width] {
-			unsafe {
-				let vsrc: $Vec = $loadu(src.as_ptr().cast());
-				let va: $Vec = $loadu(a.as_ptr().cast());
-				let vb: $Vec = $loadu(b.as_ptr().cast());
-				let vr = $merge_intrinsic(vsrc, mask, va, vb);
-				let mut out: [$Elem; $width] = [Default::default(); $width];
-				$storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $merge_intrinsic_fn(
+            src: &[$Elem; $width],
+            mask: $Mask,
+            a: &[$Elem; $width],
+            b: &[$Elem; $width],
+        ) -> [$Elem; $width] {
+            unsafe {
+                let vsrc: $Vec = $loadu(src.as_ptr().cast());
+                let va: $Vec = $loadu(a.as_ptr().cast());
+                let vb: $Vec = $loadu(b.as_ptr().cast());
+                let vr = $merge_intrinsic(vsrc, mask, va, vb);
+                let mut out: [$Elem; $width] = [Default::default(); $width];
+                $storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $zero_intrinsic_fn(mask: $Mask, a: &[$Elem; $width], b: &[$Elem; $width]) -> [$Elem; $width] {
-			unsafe {
-				let va: $Vec = $loadu(a.as_ptr().cast());
-				let vb: $Vec = $loadu(b.as_ptr().cast());
-				let vr = $zero_intrinsic(mask, va, vb);
-				let mut out: [$Elem; $width] = [Default::default(); $width];
-				$storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $zero_intrinsic_fn(
+            mask: $Mask,
+            a: &[$Elem; $width],
+            b: &[$Elem; $width],
+        ) -> [$Elem; $width] {
+            unsafe {
+                let va: $Vec = $loadu(a.as_ptr().cast());
+                let vb: $Vec = $loadu(b.as_ptr().cast());
+                let vr = $zero_intrinsic(mask, va, vb);
+                let mut out: [$Elem; $width] = [Default::default(); $width];
+                $storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// 2-op with no HW SIMD path (integer div, 8-bit mul): no `unsafe`, no
@@ -298,7 +316,7 @@ macro_rules! simd_binop_imm {
 /// immediate. Fixed-width only, no slice form (mask has no chunking story
 /// yet, same reasoning as [`simd_binop_masked`]).
 macro_rules! simd_binop_imm_masked {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		merge_fn = $merge_fn:ident, zero_fn = $zero_fn:ident,
 		merge_intrinsic_fn = $merge_intrinsic_fn:ident, zero_intrinsic_fn = $zero_intrinsic_fn:ident,
@@ -307,91 +325,114 @@ macro_rules! simd_binop_imm_masked {
 		merge_intrinsic = $merge_intrinsic:ident, zero_intrinsic = $zero_intrinsic:ident,
 		merge_doc = $merge_doc:literal, zero_doc = $zero_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $merge_doc]
-			#[inline]
-			pub fn $merge_fn<const IMM8: i32>(
-				self, src: [$Elem; $width], mask: $Mask, a: [$Elem; $width], b: [$Elem; $width],
-			) -> [$Elem; $width] {
-				unsafe { $merge_intrinsic_fn::<IMM8>(&src, mask, &a, &b) }
-			}
+        impl $Token {
+            #[doc = $merge_doc]
+            #[inline]
+            pub fn $merge_fn<const IMM8: i32>(
+                self,
+                src: [$Elem; $width],
+                mask: $Mask,
+                a: [$Elem; $width],
+                b: [$Elem; $width],
+            ) -> [$Elem; $width] {
+                unsafe { $merge_intrinsic_fn::<IMM8>(&src, mask, &a, &b) }
+            }
 
-			#[doc = $zero_doc]
-			#[inline]
-			pub fn $zero_fn<const IMM8: i32>(self, mask: $Mask, a: [$Elem; $width], b: [$Elem; $width]) -> [$Elem; $width] {
-				unsafe { $zero_intrinsic_fn::<IMM8>(mask, &a, &b) }
-			}
-		}
+            #[doc = $zero_doc]
+            #[inline]
+            pub fn $zero_fn<const IMM8: i32>(
+                self,
+                mask: $Mask,
+                a: [$Elem; $width],
+                b: [$Elem; $width],
+            ) -> [$Elem; $width] {
+                unsafe { $zero_intrinsic_fn::<IMM8>(mask, &a, &b) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $merge_intrinsic_fn<const IMM8: i32>(
-			src: &[$Elem; $width], mask: $Mask, a: &[$Elem; $width], b: &[$Elem; $width],
-		) -> [$Elem; $width] {
-			unsafe {
-				let vsrc: $Vec = $loadu(src.as_ptr().cast());
-				let va: $Vec = $loadu(a.as_ptr().cast());
-				let vb: $Vec = $loadu(b.as_ptr().cast());
-				let vr = $merge_intrinsic::<IMM8>(vsrc, mask, va, vb);
-				let mut out: [$Elem; $width] = [Default::default(); $width];
-				$storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $merge_intrinsic_fn<const IMM8: i32>(
+            src: &[$Elem; $width],
+            mask: $Mask,
+            a: &[$Elem; $width],
+            b: &[$Elem; $width],
+        ) -> [$Elem; $width] {
+            unsafe {
+                let vsrc: $Vec = $loadu(src.as_ptr().cast());
+                let va: $Vec = $loadu(a.as_ptr().cast());
+                let vb: $Vec = $loadu(b.as_ptr().cast());
+                let vr = $merge_intrinsic::<IMM8>(vsrc, mask, va, vb);
+                let mut out: [$Elem; $width] = [Default::default(); $width];
+                $storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $zero_intrinsic_fn<const IMM8: i32>(mask: $Mask, a: &[$Elem; $width], b: &[$Elem; $width]) -> [$Elem; $width] {
-			unsafe {
-				let va: $Vec = $loadu(a.as_ptr().cast());
-				let vb: $Vec = $loadu(b.as_ptr().cast());
-				let vr = $zero_intrinsic::<IMM8>(mask, va, vb);
-				let mut out: [$Elem; $width] = [Default::default(); $width];
-				$storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $zero_intrinsic_fn<const IMM8: i32>(
+            mask: $Mask,
+            a: &[$Elem; $width],
+            b: &[$Elem; $width],
+        ) -> [$Elem; $width] {
+            unsafe {
+                let va: $Vec = $loadu(a.as_ptr().cast());
+                let vb: $Vec = $loadu(b.as_ptr().cast());
+                let vr = $zero_intrinsic::<IMM8>(mask, va, vb);
+                let mut out: [$Elem; $width] = [Default::default(); $width];
+                $storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// [`simd_binop_imm`] minus the `slice_fn` (RANGE-shaped: no honest scalar
 /// closure for its 16 IMM8-selected min/max/sign combos: see [`simd_cvt`]'s
 /// doc for the general reasoning this macro family shares).
 macro_rules! simd_binop_imm_fixed {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		fixed_fn = $fixed_fn:ident, intrinsic_fn = $intrinsic_fn:ident,
 		width = $width:literal, elem = $Elem:ty, vec = $Vec:ty,
 		loadu = $loadu:path, storeu = $storeu:path, intrinsic = $intrinsic:ident,
 		fixed_doc = $fixed_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $fixed_doc]
-			#[inline]
-			pub fn $fixed_fn<const IMM8: i32>(self, a: [$Elem; $width], b: [$Elem; $width]) -> [$Elem; $width] {
-				unsafe { $intrinsic_fn::<IMM8>(&a, &b) }
-			}
-		}
+        impl $Token {
+            #[doc = $fixed_doc]
+            #[inline]
+            pub fn $fixed_fn<const IMM8: i32>(
+                self,
+                a: [$Elem; $width],
+                b: [$Elem; $width],
+            ) -> [$Elem; $width] {
+                unsafe { $intrinsic_fn::<IMM8>(&a, &b) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $intrinsic_fn<const IMM8: i32>(a: &[$Elem; $width], b: &[$Elem; $width]) -> [$Elem; $width] {
-			unsafe {
-				let va: $Vec = $loadu(a.as_ptr().cast());
-				let vb: $Vec = $loadu(b.as_ptr().cast());
-				let vr = $intrinsic::<IMM8>(va, vb);
-				let mut out: [$Elem; $width] = [Default::default(); $width];
-				$storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $intrinsic_fn<const IMM8: i32>(
+            a: &[$Elem; $width],
+            b: &[$Elem; $width],
+        ) -> [$Elem; $width] {
+            unsafe {
+                let va: $Vec = $loadu(a.as_ptr().cast());
+                let vb: $Vec = $loadu(b.as_ptr().cast());
+                let vr = $intrinsic::<IMM8>(va, vb);
+                let mut out: [$Elem; $width] = [Default::default(); $width];
+                $storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// [`simd_binop`] minus the scalar closure/slice/auto: fixed-width only,
@@ -399,36 +440,36 @@ macro_rules! simd_binop_imm_fixed {
 /// multiply, `scalef`'s libm-shaped `x * 2^floor(y)`, and the scalar `_sh`
 /// family's lane-0-only + passthrough semantics).
 macro_rules! simd_binop_fixed {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		fixed_fn = $fixed_fn:ident, intrinsic_fn = $intrinsic_fn:ident,
 		width = $width:literal, elem = $Elem:ty, vec = $Vec:ty,
 		loadu = $loadu:path, storeu = $storeu:path, intrinsic = $intrinsic:path,
 		fixed_doc = $fixed_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $fixed_doc]
-			#[inline]
-			pub fn $fixed_fn(self, a: [$Elem; $width], b: [$Elem; $width]) -> [$Elem; $width] {
-				unsafe { $intrinsic_fn(&a, &b) }
-			}
-		}
+        impl $Token {
+            #[doc = $fixed_doc]
+            #[inline]
+            pub fn $fixed_fn(self, a: [$Elem; $width], b: [$Elem; $width]) -> [$Elem; $width] {
+                unsafe { $intrinsic_fn(&a, &b) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $intrinsic_fn(a: &[$Elem; $width], b: &[$Elem; $width]) -> [$Elem; $width] {
-			unsafe {
-				let va: $Vec = $loadu(a.as_ptr().cast());
-				let vb: $Vec = $loadu(b.as_ptr().cast());
-				let vr = $intrinsic(va, vb);
-				let mut out: [$Elem; $width] = [Default::default(); $width];
-				$storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $intrinsic_fn(a: &[$Elem; $width], b: &[$Elem; $width]) -> [$Elem; $width] {
+            unsafe {
+                let va: $Vec = $loadu(a.as_ptr().cast());
+                let vb: $Vec = $loadu(b.as_ptr().cast());
+                let vr = $intrinsic(va, vb);
+                let mut out: [$Elem; $width] = [Default::default(); $width];
+                $storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// Experimental "wider-bus lift" companion to [`simd_binop`] (`notes/
@@ -463,8 +504,7 @@ macro_rules! simd_binop_lifted {
 			// Two independent $width-wide chains per iteration (not one
 			// $width*2 chain): the point is issuing two independent-
 			// dependency-chain HW ops of the token's *native* width, not a
-			// wider op that doesn't exist. See benches/wider_bus_lift.rs's
-			// investigation.
+			// wider op that doesn't exist. See the `wider-bus-lift`.
 			/// # Safety
 			/// Caller proved `$lift_tf` (the wider tier being lifted
 			/// toward), not just the token's own base feature: see
@@ -536,7 +576,7 @@ macro_rules! simd_binop_lifted {
 }
 #[cfg(not(feature = "wider-bus-lift"))]
 macro_rules! simd_binop_lifted {
-	($($tt:tt)*) => {};
+    ($($tt:tt)*) => {};
 }
 
 pub(crate) use scalar_only_binop;

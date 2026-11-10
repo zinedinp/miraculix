@@ -1,9 +1,9 @@
 [package]
 name = "miraculix"
-version = "0.1.5-alpha"
+version = "0.4.1-alpha"
 authors = ["Zinedin Polic"]
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.98.0"
 description = "Safe wrapper for CPU SIMD implementation"
 readme = "README.md"
 repository = "https://github.com/zinedinp/miraculix"
@@ -12,7 +12,7 @@ keywords = ["simd", "avx", "avx512", "sse", "neon"]
 categories = ["hardware-support"]
 
 [features]
-default = ["wider-bus-lift"]
+default = ["wider-bus-lift", "wasm-simd"]
 # core::arch::powerpc64's vec_add/vec_sub/vec_xl/vec_xst and the "altivec"
 # target-feature are unstable (stdarch_powerpc, powerpc_target_feature);
 # opt in only on a nightly toolchain.
@@ -26,6 +26,21 @@ nightly-rtm = []
 # target-features (arm_target_feature), are all unstable; opt in only on a
 # nightly toolchain.
 nightly-arm-neon = []
+# wasm: compile `wasm::ops` (simd128 tokens) and `wasm::auto` into the
+# crate. Default-on. LLVM's wasm backend has no per-function target
+# features: once one function enables simd128, the whole codegen unit is
+# built with simd128, so even `detect_*`-only code can end up with simd128
+# opcodes and the module then needs a simd128 engine. Turn this off
+# (`default-features = false`) for a module that must load on engines
+# without simd128; `wasm::detect_*` and the flags stay. `+simd128` in
+# RUSTFLAGS brings the ops back regardless (the module needs simd128 then
+# anyway). No effect on other arches.
+wasm-simd = []
+# Compile the wasm relaxed-simd bodies (`wasm::ops::relaxed`, the top
+# `auto` rung for fmadd) into the module. Off by default: an engine without
+# relaxed-simd rejects any module that contains its opcodes, even unused.
+# `-C target-feature=+relaxed-simd` turns them on as well.
+wasm-relaxed-simd = ["wasm-simd"]
 # Native Xeon Phi (Knights Landing/Knights Mill, both EOL since 2020) ops:
 # AVX512_4FMAPS, AVX512_4VNNIW, AVX512ER, AVX512PF.
 phi-asm = []
@@ -37,7 +52,11 @@ wider-bus-lift = []
 [dependencies]
 
 [dev-dependencies]
-criterion = { version = "0.8.2", features = ["html_reports"] }
+# Test-only: bit-exact f16<->f32 reference conversion for aarch32 FullFP16
+# oracle tests (`aarch32::ops::fp16`) - hand-rolling IEEE-754 binary16
+# rounding is exactly the transcription risk this crate avoids elsewhere
+# (see the AES algebraic-identity oracles), so an audited crate is used
+# instead of an in-house implementation.
 half = "2.7.1"
 
 [target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
@@ -45,7 +64,7 @@ raw-cpuid = { version = "11.6.0", default-features = false }
 
 # OS probes only (not bare-metal / none): getauxval or elf_aux_info / sysctl.
 [target.'cfg(all(any(target_arch = "aarch64", target_arch = "arm", target_arch = "riscv32", target_arch = "riscv64", target_arch = "loongarch32", target_arch = "loongarch64", target_arch = "powerpc", target_arch = "powerpc64"), any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "freebsd")))'.dependencies]
-libc = { version = "0.2.189", default-features = false }
+libc = { version = "0.2.191", default-features = false }
 
 [target.'cfg(all(target_arch = "aarch64", target_os = "windows"))'.dependencies]
 windows-sys = { version = ">=0.59, <=0.61", default-features = false, features = ["Win32_System_Threading"] }
@@ -61,7 +80,10 @@ strip = "symbols"
 incremental = false
 panic = "abort"
 
-# Same codegen as release, but keep line tables for perf/flamegraph.
+# Same codegen as release, but keep line tables for perf/flamegraph. No
+# `[[bench]]` target any more (criterion harness removed); kept because
+# `cargo bench`-profile builds are still how `perf`/flamegraph runs get
+# release codegen with symbols.
 [profile.bench]
 inherits = "release"
 debug = true

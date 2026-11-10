@@ -1,6 +1,8 @@
-//! Compile-time only (see [`super::features`]). Returns [`WasmLevel`] directly,
-//! not `Assumed`/`Baseline`. Scalar/Simd128/RelaxedSimd all from
-//! `cfg(target_feature)`, never a hardware read.
+//! Compile-time level (see [`super::features`]). Returns [`WasmLevel`]
+//! directly, not `Assumed`/`Baseline`. Scalar/Simd128/RelaxedSimd from
+//! `cfg(target_feature)`, never a hardware read. This is the floor: the
+//! runtime flags (`enable_simd128`, ...) can raise [`super::detect_level`]
+//! above it, never below.
 
 use super::tiers::WasmLevel;
 
@@ -13,9 +15,9 @@ const COMPILE_TIME_LEVEL: WasmLevel = WasmLevel::Simd128;
 #[cfg(not(target_feature = "simd128"))]
 const COMPILE_TIME_LEVEL: WasmLevel = WasmLevel::Scalar;
 
-/// The only level: fixed for the life of the compiled module.
+/// The compile-time level, fixed for the life of the compiled module.
 pub const fn resolve() -> WasmLevel {
-	COMPILE_TIME_LEVEL
+    COMPILE_TIME_LEVEL
 }
 
 /// Permanently a no-op: a WASM host refuses to instantiate a module whose

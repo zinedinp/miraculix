@@ -1,8 +1,9 @@
-//! Local macros for AArch32 token-gated ops. Written fresh, not ported from
-//! `x86::ops::macros`: DSP/SIMD32's plain-GPR shape and Neon's
-//! vector-register shape don't fit x86's `_mm_*`-oriented macros. The
-//! **pattern** stays the same as every x86 token method: private
-//! `#[target_feature(enable = "...")]` impl fn, public safe wrapper.
+//! DSP/SIMD32 macros, local to aarch32: the ARMv6 packed ops live in plain
+//! GPRs and have no A64 encoding, so they are not part of the Neon DSL in
+//! `crate::arm_shared` (which the Neon op files here use). Written fresh,
+//! not ported from `x86::ops::macros`; the **pattern** is the same as every
+//! x86 token method: private `#[target_feature(enable = "...")]` impl fn,
+//! public safe wrapper.
 
 /// One `core::arch::arm` DSP/SIMD32 intrinsic taking two plain `i32`
 /// registers and returning one, wrapped as a safe fixed-width method.
@@ -174,203 +175,59 @@ macro_rules! dsp_sad_u8x4 {
 	};
 }
 
-/// Neon binop on a 4-lane 128-bit vector: safe `[T; 4]` via loadu -> op ->
-/// storeu. On arm the impl enables both `"neon"` and `"v7"` (aarch64 only
-/// needs `"neon"`).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_binop_x4 {
-	($(#[$doc:meta])* $name:ident, $elem:ty, $load:ident, $store:ident, $intrinsic:ident) => {
+/// Whole-slice form of a packed DSP binop: chunk by `$lanes`, call the
+/// fixed-width method per chunk, finish the tail with `$scalar`. The fixed
+/// method is a GPR op (no vector state to keep live), so calling it per chunk
+/// costs nothing that one big `#[target_feature]` body would save.
+macro_rules! dsp_binop_slice {
+	($(#[$doc:meta])* $slice_fn:ident, $fixed_fn:ident, $Elem:ty, $lanes:literal, $scalar:expr) => {
 		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [$elem; 4], b: [$elem; 4]) -> [$elem; 4] {
-			#[target_feature(enable = "neon")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			unsafe fn imp(a: [$elem; 4], b: [$elem; 4]) -> [$elem; 4] {
-				let av = unsafe { core::arch::arm::$load(a.as_ptr()) };
-				let bv = unsafe { core::arch::arm::$load(b.as_ptr()) };
-				let rv = core::arch::arm::$intrinsic(av, bv);
-				let mut out = [0 as $elem; 4];
-				unsafe { core::arch::arm::$store(out.as_mut_ptr(), rv) };
-				out
+		///
+		#[doc = concat!("A tail shorter than ", stringify!($lanes), " lanes is finished scalar-wise.")]
+		///
+		/// # Panics
+		/// `a.len() != b.len() || out.len() != a.len()`.
+		pub fn $slice_fn(self, a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
+			assert_eq!(a.len(), b.len());
+			assert_eq!(out.len(), a.len());
+			let (a_chunks, a_rem) = a.as_chunks::<$lanes>();
+			let (b_chunks, b_rem) = b.as_chunks::<$lanes>();
+			let (out_chunks, out_rem) = out.as_chunks_mut::<$lanes>();
+			for ((x, y), o) in a_chunks.iter().zip(b_chunks).zip(out_chunks.iter_mut()) {
+				*o = self.$fixed_fn(*x, *y);
 			}
-			unsafe { imp(a, b) }
+			let op: fn($Elem, $Elem) -> $Elem = $scalar;
+			for ((&x, &y), o) in a_rem.iter().zip(b_rem).zip(out_rem) {
+				*o = op(x, y);
+			}
 		}
 	};
 }
 
-/// One `core::arch::arm` Neon unop on a 4-lane 128-bit vector (same
-/// `loadu -> intrinsic -> storeu` bridge as [`neon_binop_x4`], one operand).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_unop_x4 {
-	($(#[$doc:meta])* $name:ident, $elem:ty, $load:ident, $store:ident, $intrinsic:ident) => {
+/// As [`dsp_binop_slice`] for the cross add-subtract ops (`qasx`/`qsax`/
+/// `sasx`): they work on whole `[i16; 2]` pairs, so there is no tail. An odd
+/// length panics instead of dropping or misreading the last element.
+macro_rules! dsp_cross_slice {
+	($(#[$doc:meta])* $slice_fn:ident, $fixed_fn:ident) => {
 		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [$elem; 4]) -> [$elem; 4] {
-			#[target_feature(enable = "neon")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			unsafe fn imp(a: [$elem; 4]) -> [$elem; 4] {
-				let av = unsafe { core::arch::arm::$load(a.as_ptr()) };
-				let rv = core::arch::arm::$intrinsic(av);
-				let mut out = [0 as $elem; 4];
-				unsafe { core::arch::arm::$store(out.as_mut_ptr(), rv) };
-				out
+		///
+		/// # Panics
+		/// `a.len() != b.len() || out.len() != a.len()`, or an odd length.
+		pub fn $slice_fn(self, a: &[i16], b: &[i16], out: &mut [i16]) {
+			assert_eq!(a.len(), b.len());
+			assert_eq!(out.len(), a.len());
+			assert_eq!(a.len() % 2, 0, "cross add-subtract needs pairs; odd length has no defined remainder");
+			let (a_chunks, _) = a.as_chunks::<2>();
+			let (b_chunks, _) = b.as_chunks::<2>();
+			let (out_chunks, _) = out.as_chunks_mut::<2>();
+			for ((x, y), o) in a_chunks.iter().zip(b_chunks).zip(out_chunks.iter_mut()) {
+				*o = self.$fixed_fn(*x, *y);
 			}
-			unsafe { imp(a) }
-		}
-	};
-}
-
-/// Neon compare on 4-lane vectors: `$elem` in, `[u32; 4]` lane mask out
-/// (all-1s or 0, not `bool`; same as x86 compares).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_cmp_x4 {
-	($(#[$doc:meta])* $name:ident, $elem:ty, $load:ident, $intrinsic:ident) => {
-		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [$elem; 4], b: [$elem; 4]) -> [u32; 4] {
-			#[target_feature(enable = "neon")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			unsafe fn imp(a: [$elem; 4], b: [$elem; 4]) -> [u32; 4] {
-				let av = unsafe { core::arch::arm::$load(a.as_ptr()) };
-				let bv = unsafe { core::arch::arm::$load(b.as_ptr()) };
-				let rv = core::arch::arm::$intrinsic(av, bv);
-				let mut out = [0u32; 4];
-				unsafe { core::arch::arm::vst1q_u32(out.as_mut_ptr(), rv) };
-				out
-			}
-			unsafe { imp(a, b) }
-		}
-	};
-}
-
-/// Neon ternary on 4-lane vectors (same bridge as [`neon_binop_x4`]);
-/// covers `vbslq_*` and `vfmaq_*` (`(a,b,c) -> result`).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_ternop_x4 {
-	($(#[$doc:meta])* $name:ident, $elem:ty, $load:ident, $store:ident, $intrinsic:ident) => {
-		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [$elem; 4], b: [$elem; 4], c: [$elem; 4]) -> [$elem; 4] {
-			#[target_feature(enable = "neon")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			unsafe fn imp(a: [$elem; 4], b: [$elem; 4], c: [$elem; 4]) -> [$elem; 4] {
-				let av = unsafe { core::arch::arm::$load(a.as_ptr()) };
-				let bv = unsafe { core::arch::arm::$load(b.as_ptr()) };
-				let cv = unsafe { core::arch::arm::$load(c.as_ptr()) };
-				let rv = core::arch::arm::$intrinsic(av, bv, cv);
-				let mut out = [0 as $elem; 4];
-				unsafe { core::arch::arm::$store(out.as_mut_ptr(), rv) };
-				out
-			}
-			unsafe { imp(a, b, c) }
-		}
-	};
-}
-
-/// FullFP16 Neon binop on `float16x8_t` as safe `[u16; 8]` bit patterns
-/// (see [`super::fp16`]). loadu -> reinterpret -> op -> reinterpret -> storeu.
-/// Enables `"neon,fp16"` plus arm `"v7"`/`"v8"`; reinterprets need only neon+v7.
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_binop_f16x8 {
-	($(#[$doc:meta])* $name:ident, $intrinsic:ident) => {
-		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [u16; 8], b: [u16; 8]) -> [u16; 8] {
-			#[target_feature(enable = "neon,fp16")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v8"))]
-			unsafe fn imp(a: [u16; 8], b: [u16; 8]) -> [u16; 8] {
-				let av = core::arch::arm::vreinterpretq_f16_u16(unsafe { core::arch::arm::vld1q_u16(a.as_ptr()) });
-				let bv = core::arch::arm::vreinterpretq_f16_u16(unsafe { core::arch::arm::vld1q_u16(b.as_ptr()) });
-				let rv = core::arch::arm::vreinterpretq_u16_f16(core::arch::arm::$intrinsic(av, bv));
-				let mut out = [0u16; 8];
-				unsafe { core::arch::arm::vst1q_u16(out.as_mut_ptr(), rv) };
-				out
-			}
-			unsafe { imp(a, b) }
-		}
-	};
-}
-
-/// As [`neon_binop_f16x8`], one operand (abs/neg-shaped).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_unop_f16x8 {
-	($(#[$doc:meta])* $name:ident, $intrinsic:ident) => {
-		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [u16; 8]) -> [u16; 8] {
-			#[target_feature(enable = "neon,fp16")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v8"))]
-			unsafe fn imp(a: [u16; 8]) -> [u16; 8] {
-				let av = core::arch::arm::vreinterpretq_f16_u16(unsafe { core::arch::arm::vld1q_u16(a.as_ptr()) });
-				let rv = core::arch::arm::vreinterpretq_u16_f16(core::arch::arm::$intrinsic(av));
-				let mut out = [0u16; 8];
-				unsafe { core::arch::arm::vst1q_u16(out.as_mut_ptr(), rv) };
-				out
-			}
-			unsafe { imp(a) }
-		}
-	};
-}
-
-/// As [`neon_binop_f16x8`], but the intrinsic returns `uint16x8_t` lane
-/// masks (16-bit wide, like [`neon_cmp_x4`]; no output reinterpret).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_cmp_f16x8 {
-	($(#[$doc:meta])* $name:ident, $intrinsic:ident) => {
-		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, a: [u16; 8], b: [u16; 8]) -> [u16; 8] {
-			#[target_feature(enable = "neon,fp16")]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v8"))]
-			unsafe fn imp(a: [u16; 8], b: [u16; 8]) -> [u16; 8] {
-				let av = core::arch::arm::vreinterpretq_f16_u16(unsafe { core::arch::arm::vld1q_u16(a.as_ptr()) });
-				let bv = core::arch::arm::vreinterpretq_f16_u16(unsafe { core::arch::arm::vld1q_u16(b.as_ptr()) });
-				let rv = core::arch::arm::$intrinsic(av, bv);
-				let mut out = [0u16; 8];
-				unsafe { core::arch::arm::vst1q_u16(out.as_mut_ptr(), rv) };
-				out
-			}
-			unsafe { imp(a, b) }
-		}
-	};
-}
-
-/// 8-bit dot / I8mm matmul: `[$acc;4]` + two 16-lane byte vectors -> new
-/// `[$acc;4]`. `$extra` is `"dotprod"` or `"i8mm"` stacked on `"neon"`
-/// (same `$extra:literal` style as crypto's `crypto_binop_u8x16!`).
-#[cfg(any(target_feature = "v7", doc))]
-macro_rules! neon_dot_acc_x4 {
-	($(#[$doc:meta])* $name:ident, $acc:ty, $a:ty, $b:ty, $acc_load:ident, $acc_store:ident, $a_load:ident, $b_load:ident, $extra:literal, $intrinsic:ident) => {
-		$(#[$doc])*
-		#[inline]
-		pub fn $name(self, acc: [$acc; 4], a: [$a; 16], b: [$b; 16]) -> [$acc; 4] {
-			#[target_feature(enable = "neon")]
-			#[target_feature(enable = $extra)]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
-			#[cfg_attr(target_arch = "arm", target_feature(enable = "v8"))]
-			unsafe fn imp(acc: [$acc; 4], a: [$a; 16], b: [$b; 16]) -> [$acc; 4] {
-				let accv = unsafe { core::arch::arm::$acc_load(acc.as_ptr()) };
-				let av = unsafe { core::arch::arm::$a_load(a.as_ptr()) };
-				let bv = unsafe { core::arch::arm::$b_load(b.as_ptr()) };
-				let rv = core::arch::arm::$intrinsic(accv, av, bv);
-				let mut out = [0 as $acc; 4];
-				unsafe { core::arch::arm::$acc_store(out.as_mut_ptr(), rv) };
-				out
-			}
-			unsafe { imp(acc, a, b) }
 		}
 	};
 }
 
 pub(crate) use {
-	dsp_binop_i16x2, dsp_binop_i32, dsp_binop_i8x4, dsp_binop_u8x4, dsp_mla16x2, dsp_mlaw, dsp_mul16x2, dsp_mulw,
-	dsp_sad_u8x4, dsp_unop_i32,
-};
-#[cfg(any(target_feature = "v7", doc))]
-pub(crate) use {
-	neon_binop_f16x8, neon_binop_x4, neon_cmp_f16x8, neon_cmp_x4, neon_dot_acc_x4, neon_ternop_x4, neon_unop_f16x8,
-	neon_unop_x4,
+    dsp_binop_i8x4, dsp_binop_i16x2, dsp_binop_i32, dsp_binop_slice, dsp_binop_u8x4,
+    dsp_cross_slice, dsp_mla16x2, dsp_mlaw, dsp_mul16x2, dsp_mulw, dsp_sad_u8x4, dsp_unop_i32,
 };

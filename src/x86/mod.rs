@@ -39,13 +39,13 @@ static CACHED_LEVEL: CachedU8 = CachedU8::new();
 static CACHED_FEATURES: CachedFeatureSet = CachedFeatureSet::new();
 
 fn level_from_u8(v: u8) -> Option<GenericLevel> {
-	match v {
-		1 => Some(GenericLevel::V1),
-		2 => Some(GenericLevel::V2),
-		3 => Some(GenericLevel::V3),
-		4 => Some(GenericLevel::V4),
-		_ => None,
-	}
+    match v {
+        1 => Some(GenericLevel::V1),
+        2 => Some(GenericLevel::V2),
+        3 => Some(GenericLevel::V3),
+        4 => Some(GenericLevel::V4),
+        _ => None,
+    }
 }
 
 /// Best x86-64 **tier** for this process (`V1`..`V4`).
@@ -68,8 +68,8 @@ fn level_from_u8(v: u8) -> Option<GenericLevel> {
 /// # }
 /// ```
 pub fn detect_level() -> GenericLevel {
-	let v = CACHED_LEVEL.get_or_init(|| detect_level_fresh() as u8);
-	level_from_u8(v).expect("cached GenericLevel discriminant")
+    let v = CACHED_LEVEL.get_or_init(|| detect_level_fresh() as u8);
+    level_from_u8(v).expect("cached GenericLevel discriminant")
 }
 
 /// Same answer as [`detect_level`], but **always** re-runs shortpath / `CPUID`.
@@ -77,10 +77,10 @@ pub fn detect_level() -> GenericLevel {
 /// Does not read or write the process cache. Use in tests or re-audits.
 /// Prefer [`detect_level`] in hot paths.
 pub fn detect_level_fresh() -> GenericLevel {
-	match shortpath::resolve() {
-		shortpath::ResolvedPath::Assumed(level) => level,
-		shortpath::ResolvedPath::RuntimeDispatch => GenericLevel::detect(FeatureSet::detect()),
-	}
+    match shortpath::resolve() {
+        shortpath::ResolvedPath::Assumed(level) => level,
+        shortpath::ResolvedPath::RuntimeDispatch => GenericLevel::detect(FeatureSet::detect()),
+    }
 }
 
 /// Full **per-feature** capability bitset for this process.
@@ -107,7 +107,7 @@ pub fn detect_level_fresh() -> GenericLevel {
 /// # }
 /// ```
 pub fn detect_features() -> FeatureSet {
-	shortpath::compile_time_features().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
+    shortpath::compile_time_features().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
 }
 
 /// Same answer as [`detect_features`], but always re-probes `CPUID`.
@@ -115,15 +115,15 @@ pub fn detect_features() -> FeatureSet {
 /// Does not read or write the process cache. Prefer [`detect_features`] in
 /// normal code.
 pub fn detect_features_fresh() -> FeatureSet {
-	shortpath::compile_time_features().union(FeatureSet::detect())
+    shortpath::compile_time_features().union(FeatureSet::detect())
 }
 
 /// Optional: run detect once at startup so the first hot path is a cache hit.
 ///
 /// Not required. Safe to call multiple times.
 pub fn warm_up() {
-	let _ = detect_level();
-	let _ = detect_features();
+    let _ = detect_level();
+    let _ = detect_features();
 }
 
 #[cfg(test)]

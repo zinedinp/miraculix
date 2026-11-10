@@ -8,9 +8,9 @@ mod reduce;
 mod shift;
 mod structural;
 mod ternop;
-mod unop;
 #[cfg(test)]
 mod test_helpers;
+mod unop;
 
 pub(crate) use binop::*;
 pub(crate) use cvt::*;
@@ -18,6 +18,6 @@ pub(crate) use reduce::*;
 pub(crate) use shift::*;
 pub(crate) use structural::*;
 pub(crate) use ternop::*;
-pub(crate) use unop::*;
 #[cfg(test)]
 pub(crate) use test_helpers::*;
+pub(crate) use unop::*;

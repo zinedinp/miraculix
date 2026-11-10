@@ -259,7 +259,19 @@ k_vec_to_mask_w!(
     u16,
     "Extract a 16-bit mask from each lane's sign bit (`vpmovw2m`, 256-bit)."
 );
-k_vec_to_mask_w!(Avx512DqVl, "avx512dq,avx512vl", movepi32_mask_x4, movepi32_mask_x4_intrinsic, _mm_movepi32_mask, i32, 4, __m128i, _mm_loadu_si128, u8, "Extract a mask (bottom 4 bits significant) from each lane's sign bit (`vpmovd2m`, 128-bit; `__mmask8`, the AVX-512 minimum, despite 4 lanes).");
+k_vec_to_mask_w!(
+    Avx512DqVl,
+    "avx512dq,avx512vl",
+    movepi32_mask_x4,
+    movepi32_mask_x4_intrinsic,
+    _mm_movepi32_mask,
+    i32,
+    4,
+    __m128i,
+    _mm_loadu_si128,
+    u8,
+    "Extract a mask (bottom 4 bits significant) from each lane's sign bit (`vpmovd2m`, 128-bit; `__mmask8`, the AVX-512 minimum, despite 4 lanes)."
+);
 k_vec_to_mask_w!(
     Avx512DqVl,
     "avx512dq,avx512vl",
@@ -273,8 +285,32 @@ k_vec_to_mask_w!(
     u8,
     "Extract an 8-bit mask from each lane's sign bit (`vpmovd2m`, 256-bit)."
 );
-k_vec_to_mask_w!(Avx512DqVl, "avx512dq,avx512vl", movepi64_mask_x2, movepi64_mask_x2_intrinsic, _mm_movepi64_mask, i64, 2, __m128i, _mm_loadu_si128, u8, "Extract a mask (bottom 2 bits significant) from each lane's sign bit (`vpmovq2m`, 128-bit; `__mmask8`, the AVX-512 minimum, despite 2 lanes).");
-k_vec_to_mask_w!(Avx512DqVl, "avx512dq,avx512vl", movepi64_mask_x4, movepi64_mask_x4_intrinsic, _mm256_movepi64_mask, i64, 4, __m256i, _mm256_loadu_si256, u8, "Extract a mask (bottom 4 bits significant) from each lane's sign bit (`vpmovq2m`, 256-bit; `__mmask8`, the AVX-512 minimum, despite 4 lanes).");
+k_vec_to_mask_w!(
+    Avx512DqVl,
+    "avx512dq,avx512vl",
+    movepi64_mask_x2,
+    movepi64_mask_x2_intrinsic,
+    _mm_movepi64_mask,
+    i64,
+    2,
+    __m128i,
+    _mm_loadu_si128,
+    u8,
+    "Extract a mask (bottom 2 bits significant) from each lane's sign bit (`vpmovq2m`, 128-bit; `__mmask8`, the AVX-512 minimum, despite 2 lanes)."
+);
+k_vec_to_mask_w!(
+    Avx512DqVl,
+    "avx512dq,avx512vl",
+    movepi64_mask_x4,
+    movepi64_mask_x4_intrinsic,
+    _mm256_movepi64_mask,
+    i64,
+    4,
+    __m256i,
+    _mm256_loadu_si256,
+    u8,
+    "Extract a mask (bottom 4 bits significant) from each lane's sign bit (`vpmovq2m`, 256-bit; `__mmask8`, the AVX-512 minimum, despite 4 lanes)."
+);
 
 k_mask_to_vec_w!(
     Avx512BwVl,

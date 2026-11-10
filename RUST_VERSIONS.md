@@ -1,6 +1,6 @@
 # Rust version per feature
 
-Crate MSRV: **1.94.0** (`rust-version` in [Cargo.toml](Cargo.toml)).
+Crate MSRV: **1.98.0** (`rust-version` in [Cargo.toml](Cargo.toml)).
 
 ## How versions are chosen
 
@@ -10,6 +10,12 @@ on the **intrinsics this crate actually calls**, from installed `core_arch`
 `~/.rustup/toolchains/<t>/lib/rustlib/src/rust/library/stdarch/crates/core_arch/src/x86/`).
 Do not copy a neighbor row. Before raising `rust-version`, re-check with
 clippy's MSRV lint.
+
+The table tracks intrinsics only, not language features. The `_slice`
+methods split their inputs with `as_chunks` / `as_chunks_mut` (stable since
+1.88, adopted for clippy's `chunks_exact_to_as_chunks` lint in 1.99). Any
+row below 1.88 therefore needs 1.88 for the slice forms. That is still
+below the crate MSRV, so it moves nothing.
 
 ## `x86::ops` (default build)
 
@@ -70,6 +76,26 @@ These do **not** set the crate MSRV.
 | `avx512` | AVX512_4VNNIW | 1.59.0 + `phi-asm` | Same as 4FMAPS; `vp4dpwssd`/`vp4dpwssds`. |
 | `avx512` | AVX512PF | 1.59.0 + `phi-asm` | Knights Landing; prefetch hints only; first raw-pointer public API (`unsafe`). |
 | `avx512` | AVX512ER | 1.59.0 + `phi-asm` | Knights Landing; `vrcp28`/`vrsqrt28`/`vexp2` packed. |
+
+## `aarch64::ops`
+
+Own file: [RUST_VERSIONS_AARCH64.md](RUST_VERSIONS_AARCH64.md). Headline:
+DotProd (`stdarch_neon_dotprod`, 1.98.0) is what sets the current MSRV - it
+was raised from 1.94 so that DotProd and JSCVT use their now-stable
+intrinsics instead of `asm!`. Extensions whose intrinsics are still unstable
+(I8MM, FCMA, FRINTTS, BF16, SM3/SM4, RNG, SVE) go through `asm!` under stable
+target features. SME / SVE2.1 target features are still
+unstable, so those stay detect-only.
+
+## `wasm::ops` (wasm32)
+
+| Token | Proposal | Min `rustc` | Notes |
+|---|---|---|---|
+| `Simd128` | simd128 | 1.54.0 | `wasm_simd`. Behind cargo feature `wasm-simd` (default) or `+simd128`. `sqrt`/`ceil`/`floor`/`trunc`/`nearest` token-only (no `core` scalar under `no_std`); the slice tail goes through the vector op, so the token slice forms are complete. |
+| `RelaxedSimd` | relaxed-simd | 1.82.0 | `stdarch_wasm_relaxed_simd`. Behind cargo feature `wasm-relaxed-simd` or `+relaxed-simd`. |
+
+`core::arch::wasm64` is unstable, so wasm64 stays detect-only. No FP16:
+stdarch has no wasm f16 intrinsics (stable or nightly).
 
 ## `powerpc::ops`
 

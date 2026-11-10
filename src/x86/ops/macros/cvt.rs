@@ -10,7 +10,7 @@
 /// can't guarantee up front, so there is no honest scalar closure to check a
 /// remainder against.
 macro_rules! simd_cvt {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		fixed_fn = $fixed_fn:ident, intrinsic_fn = $intrinsic_fn:ident,
 		width = $width:literal,
@@ -19,35 +19,35 @@ macro_rules! simd_cvt {
 		intrinsic = $intrinsic:path,
 		fixed_doc = $fixed_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $fixed_doc]
-			#[inline]
-			pub fn $fixed_fn(self, a: [$InElem; $width]) -> [$OutElem; $width] {
-				unsafe { $intrinsic_fn(&a) }
-			}
-		}
+        impl $Token {
+            #[doc = $fixed_doc]
+            #[inline]
+            pub fn $fixed_fn(self, a: [$InElem; $width]) -> [$OutElem; $width] {
+                unsafe { $intrinsic_fn(&a) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $intrinsic_fn(a: &[$InElem; $width]) -> [$OutElem; $width] {
-			unsafe {
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr: $OutVec = $intrinsic(va);
-				let mut out: [$OutElem; $width] = [Default::default(); $width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $intrinsic_fn(a: &[$InElem; $width]) -> [$OutElem; $width] {
+            unsafe {
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr: $OutVec = $intrinsic(va);
+                let mut out: [$OutElem; $width] = [Default::default(); $width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// Merge/zero-masked [`simd_cvt`]: same differing-in/out-element shape, plus
 /// a `src`/`mask` pair. `src` and the zero-fill are always `$OutElem`: the
 /// masked lanes never see `$InElem`, only the converted result does.
 macro_rules! simd_cvt_masked {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		merge_fn = $merge_fn:ident, zero_fn = $zero_fn:ident,
 		merge_intrinsic_fn = $merge_intrinsic_fn:ident, zero_intrinsic_fn = $zero_intrinsic_fn:ident,
@@ -58,51 +58,58 @@ macro_rules! simd_cvt_masked {
 		merge_intrinsic = $merge_intrinsic:path, zero_intrinsic = $zero_intrinsic:path,
 		merge_doc = $merge_doc:literal, zero_doc = $zero_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $merge_doc]
-			#[inline]
-			pub fn $merge_fn(self, src: [$OutElem; $width], mask: $Mask, a: [$InElem; $width]) -> [$OutElem; $width] {
-				unsafe { $merge_intrinsic_fn(&src, mask, &a) }
-			}
+        impl $Token {
+            #[doc = $merge_doc]
+            #[inline]
+            pub fn $merge_fn(
+                self,
+                src: [$OutElem; $width],
+                mask: $Mask,
+                a: [$InElem; $width],
+            ) -> [$OutElem; $width] {
+                unsafe { $merge_intrinsic_fn(&src, mask, &a) }
+            }
 
-			#[doc = $zero_doc]
-			#[inline]
-			pub fn $zero_fn(self, mask: $Mask, a: [$InElem; $width]) -> [$OutElem; $width] {
-				unsafe { $zero_intrinsic_fn(mask, &a) }
-			}
-		}
+            #[doc = $zero_doc]
+            #[inline]
+            pub fn $zero_fn(self, mask: $Mask, a: [$InElem; $width]) -> [$OutElem; $width] {
+                unsafe { $zero_intrinsic_fn(mask, &a) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $merge_intrinsic_fn(
-			src: &[$OutElem; $width], mask: $Mask, a: &[$InElem; $width],
-		) -> [$OutElem; $width] {
-			unsafe {
-				let vsrc: $OutVec = $out_loadu(src.as_ptr().cast());
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr = $merge_intrinsic(vsrc, mask, va);
-				let mut out: [$OutElem; $width] = [Default::default(); $width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $merge_intrinsic_fn(
+            src: &[$OutElem; $width],
+            mask: $Mask,
+            a: &[$InElem; $width],
+        ) -> [$OutElem; $width] {
+            unsafe {
+                let vsrc: $OutVec = $out_loadu(src.as_ptr().cast());
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr = $merge_intrinsic(vsrc, mask, va);
+                let mut out: [$OutElem; $width] = [Default::default(); $width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $zero_intrinsic_fn(mask: $Mask, a: &[$InElem; $width]) -> [$OutElem; $width] {
-			unsafe {
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr = $zero_intrinsic(mask, va);
-				let mut out: [$OutElem; $width] = [Default::default(); $width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $zero_intrinsic_fn(mask: $Mask, a: &[$InElem; $width]) -> [$OutElem; $width] {
+            unsafe {
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr = $zero_intrinsic(mask, va);
+                let mut out: [$OutElem; $width] = [Default::default(); $width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// [`simd_cvt`] generalized to a fixed `in_width` (the source register's
@@ -112,7 +119,7 @@ macro_rules! simd_cvt_masked {
 /// on the target width. Fixed-width only, same shape as [`simd_broadcast`]
 /// plus a type change.
 macro_rules! simd_cvt_widen {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		fixed_fn = $fixed_fn:ident, intrinsic_fn = $intrinsic_fn:ident,
 		in_width = $in_width:literal, out_width = $out_width:literal,
@@ -121,28 +128,28 @@ macro_rules! simd_cvt_widen {
 		intrinsic = $intrinsic:path,
 		fixed_doc = $fixed_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $fixed_doc]
-			#[inline]
-			pub fn $fixed_fn(self, a: [$InElem; $in_width]) -> [$OutElem; $out_width] {
-				unsafe { $intrinsic_fn(&a) }
-			}
-		}
+        impl $Token {
+            #[doc = $fixed_doc]
+            #[inline]
+            pub fn $fixed_fn(self, a: [$InElem; $in_width]) -> [$OutElem; $out_width] {
+                unsafe { $intrinsic_fn(&a) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $intrinsic_fn(a: &[$InElem; $in_width]) -> [$OutElem; $out_width] {
-			unsafe {
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr: $OutVec = $intrinsic(va);
-				let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $intrinsic_fn(a: &[$InElem; $in_width]) -> [$OutElem; $out_width] {
+            unsafe {
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr: $OutVec = $intrinsic(va);
+                let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// [`simd_cvt`] generalized to a variable `in_width` narrowing down to a
@@ -150,7 +157,7 @@ macro_rules! simd_cvt_widen {
 /// lanes zeroed by hardware): the mirror image of [`simd_cvt_widen`],
 /// needed for `cvtpd_ph`.
 macro_rules! simd_cvt_narrow {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		fixed_fn = $fixed_fn:ident, intrinsic_fn = $intrinsic_fn:ident,
 		in_width = $in_width:literal, out_width = $out_width:literal,
@@ -159,33 +166,33 @@ macro_rules! simd_cvt_narrow {
 		intrinsic = $intrinsic:path,
 		fixed_doc = $fixed_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $fixed_doc]
-			#[inline]
-			pub fn $fixed_fn(self, a: [$InElem; $in_width]) -> [$OutElem; $out_width] {
-				unsafe { $intrinsic_fn(&a) }
-			}
-		}
+        impl $Token {
+            #[doc = $fixed_doc]
+            #[inline]
+            pub fn $fixed_fn(self, a: [$InElem; $in_width]) -> [$OutElem; $out_width] {
+                unsafe { $intrinsic_fn(&a) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $intrinsic_fn(a: &[$InElem; $in_width]) -> [$OutElem; $out_width] {
-			unsafe {
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr: $OutVec = $intrinsic(va);
-				let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $intrinsic_fn(a: &[$InElem; $in_width]) -> [$OutElem; $out_width] {
+            unsafe {
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr: $OutVec = $intrinsic(va);
+                let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// Merge/zero-masked [`simd_cvt_widen`]
 macro_rules! simd_cvt_widen_masked {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		merge_fn = $merge_fn:ident, zero_fn = $zero_fn:ident,
 		merge_intrinsic_fn = $merge_intrinsic_fn:ident, zero_intrinsic_fn = $zero_intrinsic_fn:ident,
@@ -196,53 +203,61 @@ macro_rules! simd_cvt_widen_masked {
 		merge_intrinsic = $merge_intrinsic:path, zero_intrinsic = $zero_intrinsic:path,
 		merge_doc = $merge_doc:literal, zero_doc = $zero_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $merge_doc]
-			#[inline]
-			pub fn $merge_fn(
-				self, src: [$OutElem; $out_width], mask: $Mask, a: [$InElem; $in_width],
-			) -> [$OutElem; $out_width] {
-				unsafe { $merge_intrinsic_fn(&src, mask, &a) }
-			}
+        impl $Token {
+            #[doc = $merge_doc]
+            #[inline]
+            pub fn $merge_fn(
+                self,
+                src: [$OutElem; $out_width],
+                mask: $Mask,
+                a: [$InElem; $in_width],
+            ) -> [$OutElem; $out_width] {
+                unsafe { $merge_intrinsic_fn(&src, mask, &a) }
+            }
 
-			#[doc = $zero_doc]
-			#[inline]
-			pub fn $zero_fn(self, mask: $Mask, a: [$InElem; $in_width]) -> [$OutElem; $out_width] {
-				unsafe { $zero_intrinsic_fn(mask, &a) }
-			}
-		}
+            #[doc = $zero_doc]
+            #[inline]
+            pub fn $zero_fn(self, mask: $Mask, a: [$InElem; $in_width]) -> [$OutElem; $out_width] {
+                unsafe { $zero_intrinsic_fn(mask, &a) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $merge_intrinsic_fn(
-			src: &[$OutElem; $out_width], mask: $Mask, a: &[$InElem; $in_width],
-		) -> [$OutElem; $out_width] {
-			unsafe {
-				let vsrc: $OutVec = $out_loadu(src.as_ptr().cast());
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr = $merge_intrinsic(vsrc, mask, va);
-				let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $merge_intrinsic_fn(
+            src: &[$OutElem; $out_width],
+            mask: $Mask,
+            a: &[$InElem; $in_width],
+        ) -> [$OutElem; $out_width] {
+            unsafe {
+                let vsrc: $OutVec = $out_loadu(src.as_ptr().cast());
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr = $merge_intrinsic(vsrc, mask, va);
+                let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $zero_intrinsic_fn(mask: $Mask, a: &[$InElem; $in_width]) -> [$OutElem; $out_width] {
-			unsafe {
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr = $zero_intrinsic(mask, va);
-				let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $zero_intrinsic_fn(
+            mask: $Mask,
+            a: &[$InElem; $in_width],
+        ) -> [$OutElem; $out_width] {
+            unsafe {
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr = $zero_intrinsic(mask, va);
+                let mut out: [$OutElem; $out_width] = [Default::default(); $out_width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 /// Merge/zero-masked [`simd_cvt_narrow`]. Identical body to
@@ -283,7 +298,7 @@ macro_rules! simd_cvt_narrow_masked {
 /// unlike `simd_cvt` this has no widen/narrow sibling: every caller so far
 /// has matching in/out lane counts at 512-bit.
 macro_rules! simd_cvt_imm {
-	(
+    (
 		token = $Token:ty, target_feature = $tf:literal,
 		fixed_fn = $fixed_fn:ident, intrinsic_fn = $intrinsic_fn:ident,
 		width = $width:literal,
@@ -292,28 +307,28 @@ macro_rules! simd_cvt_imm {
 		intrinsic = $intrinsic:ident,
 		fixed_doc = $fixed_doc:literal,
 	) => {
-		impl $Token {
-			#[doc = $fixed_doc]
-			#[inline]
-			pub fn $fixed_fn<const IMM8: i32>(self, a: [$InElem; $width]) -> [$OutElem; $width] {
-				unsafe { $intrinsic_fn::<IMM8>(&a) }
-			}
-		}
+        impl $Token {
+            #[doc = $fixed_doc]
+            #[inline]
+            pub fn $fixed_fn<const IMM8: i32>(self, a: [$InElem; $width]) -> [$OutElem; $width] {
+                unsafe { $intrinsic_fn::<IMM8>(&a) }
+            }
+        }
 
-		/// # Safety
-		/// Caller proved the feature via the token.
-		#[inline]
-		#[target_feature(enable = $tf)]
-		unsafe fn $intrinsic_fn<const IMM8: i32>(a: &[$InElem; $width]) -> [$OutElem; $width] {
-			unsafe {
-				let va: $InVec = $in_loadu(a.as_ptr().cast());
-				let vr: $OutVec = $intrinsic::<IMM8>(va);
-				let mut out: [$OutElem; $width] = [Default::default(); $width];
-				$out_storeu(out.as_mut_ptr().cast(), vr);
-				out
-			}
-		}
-	};
+        /// # Safety
+        /// Caller proved the feature via the token.
+        #[inline]
+        #[target_feature(enable = $tf)]
+        unsafe fn $intrinsic_fn<const IMM8: i32>(a: &[$InElem; $width]) -> [$OutElem; $width] {
+            unsafe {
+                let va: $InVec = $in_loadu(a.as_ptr().cast());
+                let vr: $OutVec = $intrinsic::<IMM8>(va);
+                let mut out: [$OutElem; $width] = [Default::default(); $width];
+                $out_storeu(out.as_mut_ptr().cast(), vr);
+                out
+            }
+        }
+    };
 }
 
 pub(crate) use simd_cvt;

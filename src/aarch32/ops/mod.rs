@@ -28,18 +28,6 @@
 //! Neon (`vfpv4neon`, `crc32`, `crypto`, `fp16`, `dotprod`, `i8mm`) or
 //! baseline ARMv6 free functions ([`sat`]).
 
-pub mod dsp;
-/// Needs a `v7` compile-time baseline (`armv7-*` or `-C target-feature=+v7`),
-/// matching `core::arch::arm`'s gate on its `neon` module. Sub-`v7` targets
-/// (e.g. Pi Zero / ARMv6) can use [`dsp`] only; Neon is compiled out entirely,
-/// separate from [`super::Feature::Neon`]'s runtime check in
-/// [`Neon::detect`](neon::Neon::detect).
-#[cfg(any(target_feature = "v7", doc))]
-pub mod neon;
-/// Neon + VFPv4 fused multiply-add (`+FMA`). Separate token from [`neon`],
-/// same `v7` compile-time gate.
-#[cfg(any(target_feature = "v7", doc))]
-pub mod vfpv4neon;
 /// ARMv8-A32 CRC32 (Cortex-A32 class). Same upstream `neon` module / `v7`
 /// compile gate as [`neon`]/[`vfpv4neon`]; `crc`/`v8` are runtime
 /// `#[target_feature]` only.
@@ -49,20 +37,32 @@ pub mod crc32;
 /// under ordinary `stdarch_arm_neon_intrinsics` (no separate feature like CRC).
 #[cfg(any(target_feature = "v7", doc))]
 pub mod crypto;
-/// ARMv6 baseline `SSAT`/`USAT`: free functions, no token (compile-time `v6`
-/// only, not a runtime extension like [`dsp`]/[`neon`]).
-#[cfg(any(target_feature = "v6", doc))]
-pub mod sat;
-/// ARMv8.2-A FullFP16 Neon. Same `v7` compile gate as [`crc32`]/[`crypto`].
-#[cfg(any(target_feature = "v7", doc))]
-pub mod fp16;
 /// ARMv8.2-A Dot Product (`vdotq_s32`/`vdotq_u32`). Same `v7` gate.
 #[cfg(any(target_feature = "v7", doc))]
 pub mod dotprod;
+pub mod dsp;
+/// ARMv8.2-A FullFP16 Neon. Same `v7` compile gate as [`crc32`]/[`crypto`].
+#[cfg(any(target_feature = "v7", doc))]
+pub mod fp16;
 /// ARMv8.6-A Int8 Matrix Multiply. Same `v7` gate as [`crc32`]/[`crypto`].
 #[cfg(any(target_feature = "v7", doc))]
 pub mod i8mm;
 mod macros;
+/// Needs a `v7` compile-time baseline (`armv7-*` or `-C target-feature=+v7`),
+/// matching `core::arch::arm`'s gate on its `neon` module. Sub-`v7` targets
+/// (e.g. Pi Zero / ARMv6) can use [`dsp`] only; Neon is compiled out entirely,
+/// separate from [`super::Feature::Neon`]'s runtime check in
+/// [`Neon::detect`](neon::Neon::detect).
+#[cfg(any(target_feature = "v7", doc))]
+pub mod neon;
+/// ARMv6 baseline `SSAT`/`USAT`: free functions, no token (compile-time `v6`
+/// only, not a runtime extension like [`dsp`]/[`neon`]).
+#[cfg(any(target_feature = "v6", doc))]
+pub mod sat;
+/// Neon + VFPv4 fused multiply-add (`+FMA`). Separate token from [`neon`],
+/// same `v7` compile-time gate.
+#[cfg(any(target_feature = "v7", doc))]
+pub mod vfpv4neon;
 
 // Not wrapped (stdarch / HWCAP gaps; see notes/miraculix/TODO.md B4):
 // - RDM (Armv8.1): no arm stdarch path, no 32-bit Linux HWCAP bit.

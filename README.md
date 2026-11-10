@@ -16,8 +16,15 @@ more hassle than it is worth.
 
 Still in Alpha. Expect unintended behaviour.
 
-x86/x86_64 is the furthest developed part. Other platforms already have
-detect support, and the most-used targets get richer operation support first.
+x86/x86_64 is the furthest developed part. AArch64 has token-gated Neon,
+crypto, CRC32, the v8.x Advanced SIMD extensions, SVE/SVE2 (predicated slice
+ops with no scalar tail, vector-length tokens, and the SVE2 crypto /
+bit-permute / matrix extensions) plus an `auto` slice layer that takes the
+SVE rung when the CPU has it. SME/SME2 are **detect-only (TODO)**. Other
+platforms already have detect support, and the most-used targets get richer
+operation support first. Cross-architecture names: [SIMD_NAME_MAP.md](SIMD_NAME_MAP.md);
+minimum Rust per feature: [RUST_VERSIONS.md](RUST_VERSIONS.md) and
+[RUST_VERSIONS_AARCH64.md](RUST_VERSIONS_AARCH64.md).
 
 ## Installation
 
@@ -236,12 +243,12 @@ Same shape on `x86`, `aarch64`, `aarch32`, `riscv`, `loongarch`, `powerpc`, `was
 | `warm_up()` | Optional: fill both level and feature caches at startup. |
 | `shortpath::verify_or_panic()` | If the binary was built for a high tier, panic if the CPU is weaker. |
 
-**x86 only extras** (raw features, not coarse tiers):
+**x86 and aarch64 extras** (raw features, not coarse tiers):
 
 | Call | What it does |
 |---|---|
 | `detect_features()` | Full `FeatureSet` bitset (cached). **What `auto_up` and tokens use.** Prefer this for fine-grained gates. |
-| `detect_features_fresh()` | Fresh `CPUID` unioned with compile-time lower bound. |
+| `detect_features_fresh()` | Fresh probe (`CPUID` / auxv / `sysctlbyname` / `IsProcessorFeaturePresent`) unioned with the compile-time lower bound. |
 
 **Level vs features vs auto:** `detect_level` folds many flags into V1..V4
 (psABI buckets). `detect_features` keeps every extension bit. `auto_up::*`
@@ -392,8 +399,10 @@ selection rules live in the rustdoc for `x86::fn_macros`.
 | `phi-asm` | off | Xeon Phi 4FMAPS / 4VNNIW / ER / PF ops |
 | `nightly-altivec` | off | Power AltiVec via nightly stdarch |
 | `nightly-rtm` | off | x86 RTM via nightly stdarch |
+| `wasm-simd` | on | wasm: compile `wasm::ops` / `wasm::auto` (simd128). Turn off (`default-features = false`) for a module that must load on engines without simd128; detection stays |
+| `wasm-relaxed-simd` | off | Compile wasm relaxed-simd bodies (`wasm::ops::relaxed`, top `fmadd` rung). Off because engines without relaxed-simd reject the whole module |
 
-MSRV: **1.94.0** (see `RUST_VERSIONS.md` for per-extension floors).
+MSRV: **1.98.0** (see `RUST_VERSIONS.md` and `RUST_VERSIONS_AARCH64.md` for per-extension floors).
 
 ---
 
@@ -404,3 +413,59 @@ MSRV: **1.94.0** (see `RUST_VERSIONS.md` for per-extension floors).
 3. Missing feature => `None` token or narrower/scalar auto path. Never silent
    illegal instruction from a public auto call.
 4. No app-wide `init` required: first `detect_*` fills a process cache.
+## WebAssembly (simd128 / relaxed-simd)
+
+`miraculix::wasm` has the same three levels as the other arches: tokens
+(`wasm::ops::simd128::Simd128`, `wasm::ops::relaxed::RelaxedSimd`), `_slice`
+methods, and `wasm::auto_up` (alias `wasm::auto`, 199 fns). wasm has no
+hardware probe, so, as in pulp, the host switches the SIMD path on after it
+checked support:
+
+```rust
+# #[cfg(target_arch = "wasm32")] {
+miraculix::wasm::enable_simd128(); // e.g. from an export the JS/wasmtime host calls
+let mut out = [0f32; 3];
+miraculix::wasm::auto::add_f32(&[1.0, 2.0, 3.0], &[0.5; 3], &mut out);
+# }
+```
+
+Building with `-C target-feature=+simd128` turns it on at compile time
+instead. Using `wasm::ops` or `wasm::auto` puts simd128 opcodes into the
+module, so an engine without simd128 rejects it at load time; the flag only
+picks which code runs. relaxed-simd code needs the `wasm-relaxed-simd`
+feature or `+relaxed-simd`.
+
+LLVM's wasm backend has no per-function target features: with the default
+`wasm-simd` feature the whole crate is compiled with simd128, even
+`detect_*`. A module that must load without simd128 builds miraculix with
+`default-features = false`; then the crate contains no SIMD opcode
+(checked by `scripts/check-asm-wasm.sh` and a wasmtime run with
+`-W simd=n`).
+
+Tests run under node (V8, wasip1) and wasmtime (wasip1, wasip2):
+
+```sh
+rustup target add wasm32-wasip1 wasm32-wasip2
+cargo install wasmtime-cli --locked
+scripts/wasm-test.sh             # runner x target x {plain, +feature, +simd128, +relaxed-simd}
+scripts/wasm-test.sh --release
+scripts/check-asm-wasm.sh        # release: SIMD loops really emitted, none without wasm-simd
+```
+
+## Testing the aarch64 leg
+
+There is no aarch64 hardware in the reference setup, so aarch64 is verified
+under QEMU-user (the role Intel SDE plays for x86) plus a disassembly check:
+
+```sh
+rustup target add aarch64-unknown-linux-musl   # self-contained, no cross-GCC needed
+scripts/qemu-test.sh                           # tests across a QEMU CPU matrix
+scripts/check-asm.sh                           # release build: were the vector instructions really emitted?
+```
+
+`qemu-test.sh` uses the glibc target instead when `aarch64-linux-gnu-gcc` is
+installed. Its matrix includes SVE at vector lengths 128, 256 and 512
+(`max,sveNNN=on`, `neoverse-v1`, `a64fx`); a test pins each row's expected
+features and VL, so a CPU model that silently lacked SVE would fail rather
+than skip. `examples/aarch64_pilot_smoke.rs` is a dependency-free smoke binary
+for a real board.

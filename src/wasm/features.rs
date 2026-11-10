@@ -1,28 +1,75 @@
-//! WASM SIMD: fixed at compile time. Host validates opcodes at instantiate;
-//! `detect()` restates `cfg(target_feature)`, not a runtime hardware read.
+//! WASM SIMD proposals and the runtime flags: compile-time
+//! `cfg(target_feature)` **or** a flag the embedder sets (pulp-style, see
+//! [`enable_simd128`]). No hardware probe exists on wasm.
+//!
+//! The flags choose which code runs; they cannot make a module load on an
+//! engine that lacks the proposal (validation is per module). Why, and
+//! what the `wasm-simd` / `wasm-relaxed-simd` cargo features put into the
+//! module: see the [`super`] module doc, "What ends up in the module".
+
+use core::sync::atomic::{AtomicBool, Ordering};
+
+static SIMD128: AtomicBool = AtomicBool::new(cfg!(target_feature = "simd128"));
+static RELAXED_SIMD: AtomicBool = AtomicBool::new(cfg!(target_feature = "relaxed-simd"));
+
+/// Tell the crate the engine runs simd128. Call once, after the host checked.
+pub fn enable_simd128() {
+    SIMD128.store(true, Ordering::Relaxed);
+}
+
+/// Back to the scalar path (also drops relaxed-simd, which implies simd128).
+/// No effect when the binary was built with `+simd128`: the compiler already
+/// emits simd128 everywhere, so the flag cannot take it back.
+pub fn disable_simd128() {
+    disable_relaxed_simd();
+    SIMD128.store(false, Ordering::Relaxed);
+}
+
+/// `cfg(target_feature = "simd128")` or [`enable_simd128`] was called.
+pub fn is_simd128_enabled() -> bool {
+    cfg!(target_feature = "simd128") || SIMD128.load(Ordering::Relaxed)
+}
+
+/// Tell the crate the engine runs relaxed-simd (enables simd128 too).
+pub fn enable_relaxed_simd() {
+    enable_simd128();
+    RELAXED_SIMD.store(true, Ordering::Relaxed);
+}
+
+/// Drop relaxed-simd only; simd128 stays as it was. No effect when built
+/// with `+relaxed-simd`.
+pub fn disable_relaxed_simd() {
+    RELAXED_SIMD.store(false, Ordering::Relaxed);
+}
+
+/// `cfg(target_feature = "relaxed-simd")` or [`enable_relaxed_simd`] was
+/// called.
+pub fn is_relaxed_simd_enabled() -> bool {
+    cfg!(target_feature = "relaxed-simd") || RELAXED_SIMD.load(Ordering::Relaxed)
+}
 
 /// Enum list for WASM SIMD proposals. `relaxed-simd` implies `simd128` (LLVM).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Feature {
-	/// Fixed-width 128-bit SIMD (`v128`, `i32x4_add`, ...). Stable since 1.54.
-	Simd128,
-	/// Relaxed-SIMD: implementation-defined-precision ops (fma, swizzle, dot).
-	/// Stable since 1.82.
-	RelaxedSimd,
+    /// Fixed-width 128-bit SIMD (`v128`, `i32x4_add`, ...). Stable since 1.54.
+    Simd128,
+    /// Relaxed-SIMD: implementation-defined-precision ops (fma, swizzle, dot).
+    /// Stable since 1.82.
+    RelaxedSimd,
 }
 
 impl Feature {
-	/// Index = bit in [`FeatureSet`].
-	pub const ALL: &'static [Feature] = &[Feature::Simd128, Feature::RelaxedSimd];
+    /// Index = bit in [`FeatureSet`].
+    pub const ALL: &'static [Feature] = &[Feature::Simd128, Feature::RelaxedSimd];
 
-	/// Bit index in [`FeatureSet`].
-	pub fn bit(self) -> u32 {
-		Self::ALL
-			.iter()
-			.position(|&f| f == self)
-			.expect("Feature::ALL must list every variant") as u32
-	}
+    /// Bit index in [`FeatureSet`].
+    pub fn bit(self) -> u32 {
+        Self::ALL
+            .iter()
+            .position(|&f| f == self)
+            .expect("Feature::ALL must list every variant") as u32
+    }
 }
 
 /// Bitset: one bit per [`Feature::ALL`] entry.
@@ -30,27 +77,25 @@ impl Feature {
 pub struct FeatureSet(u128);
 
 impl FeatureSet {
-	/// Compile-time only: mirrors this binary's `cfg(target_feature)`, not the
-	/// host engine.
-	pub fn detect() -> Self {
-		#[allow(unused_mut, reason = "mutated only when simd128/relaxed-simd cfg is active")]
-		let mut set = 0u128;
-		#[cfg(target_feature = "simd128")]
-		{
-			set |= 1 << Feature::Simd128.bit();
-		}
-		#[cfg(target_feature = "relaxed-simd")]
-		{
-			set |= 1 << Feature::RelaxedSimd.bit();
-		}
-		Self(set)
-	}
+    /// This binary's `cfg(target_feature)` plus the runtime flags
+    /// ([`enable_simd128`], [`enable_relaxed_simd`]). Never a hardware read:
+    /// wasm has none. Two atomic loads, so there is no cache.
+    pub fn detect() -> Self {
+        let mut set = 0u128;
+        if is_simd128_enabled() {
+            set |= 1 << Feature::Simd128.bit();
+        }
+        if is_relaxed_simd_enabled() {
+            set |= 1 << Feature::RelaxedSimd.bit();
+        }
+        Self(set)
+    }
 
-	pub fn contains(self, feature: Feature) -> bool {
-		self.0 & (1 << feature.bit()) != 0
-	}
+    pub fn contains(self, feature: Feature) -> bool {
+        self.0 & (1 << feature.bit()) != 0
+    }
 
-	pub fn contains_all(self, required: &[Feature]) -> bool {
-		required.iter().all(|&f| self.contains(f))
-	}
+    pub fn contains_all(self, required: &[Feature]) -> bool {
+        required.iter().all(|&f| self.contains(f))
+    }
 }

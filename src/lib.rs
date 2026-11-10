@@ -16,7 +16,7 @@
 //! | riscv32 / riscv64 | [`riscv`] |
 //! | loongarch32 / loongarch64 | [`loongarch`] |
 //! | powerpc / powerpc64 | [`powerpc`] |
-//! | wasm32 / wasm64 | [`wasm`] |
+//! | wasm32 / wasm64 | [`wasm`] (ops and `auto` on wasm32) |
 //!
 //! ## Three ways to call (x86 example)
 //!
@@ -77,7 +77,7 @@
 //! | `warm_up()` | Optional: fill cache at startup |
 //! | `shortpath::verify_or_panic()` | Startup check if binary assumes a high tier |
 //!
-//! x86 also has [`x86::detect_features`] / [`x86::detect_features_fresh`] for
+//! x86 and aarch64 also have `detect_features` / `detect_features_fresh` for
 //! the raw per-extension bitset used by auto dispatch.
 //!
 //! ## Further reading
@@ -85,11 +85,19 @@
 //! Crate README (install, full auto catalog, token layout, Cargo features).
 
 #![cfg_attr(not(test), no_std)]
-#![cfg_attr(feature = "nightly-altivec", feature(stdarch_powerpc, powerpc_target_feature))]
+#![cfg_attr(
+    feature = "nightly-altivec",
+    feature(stdarch_powerpc, powerpc_target_feature)
+)]
 #![cfg_attr(feature = "nightly-rtm", feature(stdarch_x86_rtm, rtm_target_feature))]
 #![cfg_attr(
-	all(feature = "nightly-arm-neon", target_arch = "arm"),
-	feature(stdarch_arm_dsp, stdarch_arm_neon_intrinsics, stdarch_arm_sat, arm_target_feature)
+    all(feature = "nightly-arm-neon", target_arch = "arm"),
+    feature(
+        stdarch_arm_dsp,
+        stdarch_arm_neon_intrinsics,
+        stdarch_arm_sat,
+        arm_target_feature
+    )
 )]
 // `stdarch_aarch32_crc32` (`aarch32::ops::crc32`) has no unconditional
 // re-export carrying its name on `target_arch = "arm"` (only inside the
@@ -97,25 +105,51 @@
 // it needs its own `target_feature = "v7"`-gated block - otherwise it's an
 // "unknown feature" (E0635) on a sub-`v7` compile, not just unused.
 #![cfg_attr(
-	all(feature = "nightly-arm-neon", target_arch = "arm", target_feature = "v7"),
-	feature(stdarch_aarch32_crc32)
+    all(
+        feature = "nightly-arm-neon",
+        target_arch = "arm",
+        target_feature = "v7"
+    ),
+    feature(stdarch_aarch32_crc32)
 )]
 // `aarch32::auto_down`'s FullFP16 scalar-remainder fallback needs the
 // unstable `f16` primitive (no hardware to fall back to in software; `core`
 // has no `f16` arithmetic without it). Same compile-time gate as `auto_down`
 // itself (`nightly-arm-neon` + `v7`).
-#![cfg_attr(all(feature = "nightly-arm-neon", target_arch = "arm", target_feature = "v7"), feature(f16))]
+#![cfg_attr(
+    all(
+        feature = "nightly-arm-neon",
+        target_arch = "arm",
+        target_feature = "v7"
+    ),
+    feature(f16)
+)]
 
+// Every arch caches its detected level, except wasm (runtime flags, nothing
+// to probe, and a cache would freeze the level before `enable_simd128`).
+#[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
 mod level_cache;
 
 /// x86 / x86_64: detect tiers and features, auto slice ops, tokens, kernel macros.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
 
-/// AArch64: NEON / SVE / SME detect (OS-specific probes).
+/// AArch64: NEON / SVE / SME detect, Neon token ops, auto slice ops.
 // AArch64: getauxval / elf_aux_info / sysctl / PF / bare compile-time.
 #[cfg(target_arch = "aarch64")]
 pub mod aarch64;
+
+/// Neon wrapper DSL and token macro shared by aarch64 and aarch32.
+// On arm only with the `v7` baseline, like the Neon op files that use it.
+#[cfg(any(
+    target_arch = "aarch64",
+    all(
+        target_arch = "arm",
+        feature = "nightly-arm-neon",
+        any(target_feature = "v7", doc)
+    )
+))]
+mod arm_shared;
 
 /// AArch32: VFP / NEON detect.
 // AArch32: auxv or bare compile-time. Windows CE: no rustc target (TODO).
@@ -137,7 +171,7 @@ pub mod loongarch;
 #[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
 pub mod powerpc;
 
-/// WebAssembly: compile-time simd128 / relaxed-simd only.
-// WASM32/64: compile-time only.
+/// WebAssembly: simd128 / relaxed-simd from `cfg` or runtime flags; ops and
+/// `auto` on wasm32.
 #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
 pub mod wasm;
