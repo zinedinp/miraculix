@@ -17,6 +17,7 @@
 
 pub mod bf16;
 pub mod dotprod;
+mod extra;
 pub mod fcma;
 pub mod fhm;
 pub mod fp16;

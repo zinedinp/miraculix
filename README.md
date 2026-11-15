@@ -436,10 +436,22 @@ lane**; see the module doc for how to restore order:
 | Cross-lane | `Avx2::permute2x128_i64x4`, `Avx2::broadcast_u8x16_to_x32`, `Avx512f::broadcast_u8x16_to_x64`, `Avx512f::permutex2var_u64x8` |
 | Byte masks as `u64` | `Avx512Bw::test_u8x64_mask(a, b)` (bit test per byte), `mask_blend_u8x64(k, a, b)` |
 
-Still missing (tracked in `TODO.md`): all Neon items (table lookups
-`vqtbl*`, zips, `vtstq_u8`, f32 <-> f64, a `movemask` helper; table lookups
-are listed as deliberately not wrapped in `src/aarch64/ops/mod.rs`),
-const-generic `*_fn!`, and composite tokens.
+Neon equivalents live in `src/aarch64/ops/neon/extra.rs` on the `Neon` token.
+Names match the x86 ones where the operation is the same, so a byte kernel
+can be written once:
+
+| Need | Name |
+|---|---|
+| f32 <-> f64 | `cvt_f32x4_to_f64x2`, `cvt_f64x2_to_f32x4` (x86 names), plus `cvt_f32x4_to_f64x4`, `cvt_f64x4_to_f32x4`, `cvt_f32x2_to_f64x2`, `cvt_high_f32x4_to_f64x2`, `cvt_f64x2_to_f32x2` |
+| Byte `movemask` | `movemask_i8x16` (same name, sign-bit semantics as `Sse2`) |
+| Byte interleave | `zip1_u8x16`/`zip2_u8x16` (also as `unpacklo_u8x16`/`unpackhi_u8x16`), `zip1_u8x8`/`zip2_u8x8` |
+| Bit test per byte | `test_u8x16` (`vtstq_u8`) |
+| Table lookup | `tbl_u8x16`, `tbx_u8x16`, `tbl4_u8x64`, `tbx4_u8x64`, `lookup_u8x256` (an index out of range gives 0 / keeps the fallback; this is not `pshufb`) |
+| 8-byte ops | `srli_u8x8::<N>`, `sum_u8x8` |
+
+Still missing (tracked in `TODO.md`): const-generic `*_fn!` and composite
+tokens. The Neon ops were tested under `qemu-aarch64`; `aarch64_be` has not
+been run (see the module doc for what is endian-sensitive).
 
 ---
 
