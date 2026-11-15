@@ -5,6 +5,7 @@
 use crate::level_cache::CachedU8;
 
 pub mod features;
+pub mod ops;
 pub mod shortpath;
 pub mod tiers;
 

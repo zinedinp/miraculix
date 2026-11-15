@@ -24,9 +24,10 @@
 //! For whole buffers without picking a width, prefer [`super::auto_up`].
 //!
 //! Folders follow the Intel Intrinsics Guide: [`mmx`], [`sse`],
-//! [`avx`], [`avx512`], plus [`other`] (AES, SHA, POPCNT, AMD extras, ...).
+//! [`avx`], [`avx512`], [`avx10`], plus [`other`] (AES, SHA, POPCNT, AMD extras, ...).
 
 pub mod avx;
+pub mod avx10;
 pub mod avx512;
 mod extra;
 mod macros;

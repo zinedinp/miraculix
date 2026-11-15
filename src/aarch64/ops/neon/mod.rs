@@ -9,6 +9,7 @@
 //! | [`fp16`] | v8.2 | `FEAT_FP16` | `Fp16Neon` |
 //! | [`dotprod`] | v8.2 | `FEAT_DotProd` | `Dotprod` |
 //! | [`fhm`] | v8.2 | `FEAT_FHM` | `Fhm` |
+//! | [`fp8`] | v9.5 | `FEAT_FP8` | `Fp8` |
 //! | [`fcma`] | v8.3 | `FEAT_FCMA` | `Fcma` |
 //! | [`jscvt`] | v8.3 | `FEAT_JSCVT` | `Jscvt` |
 //! | [`frintts`] | v8.5 | `FEAT_FRINTTS` | `Frintts` |
@@ -20,6 +21,7 @@ pub mod dotprod;
 mod extra;
 pub mod fcma;
 pub mod fhm;
+pub mod fp8;
 pub mod fp16;
 pub mod frintts;
 pub mod i8mm;

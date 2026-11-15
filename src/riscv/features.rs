@@ -42,6 +42,12 @@ pub enum Feature {
     C,
     /// Vector (app processors).
     V,
+    /// Vector half-precision FP (`Zvfh`), from `riscv_hwprobe(2)`. Implies V.
+    Zvfh,
+    /// Vector BF16 converts (`Zvfbfmin`), from `riscv_hwprobe(2)`. Implies V.
+    Zvfbfmin,
+    /// Vector widening BF16 multiply-accumulate (`Zvfbfwma`), from `riscv_hwprobe(2)`. Implies V.
+    Zvfbfwma,
 }
 
 impl Feature {
@@ -53,6 +59,9 @@ impl Feature {
         Feature::D,
         Feature::C,
         Feature::V,
+        Feature::Zvfh,
+        Feature::Zvfbfmin,
+        Feature::Zvfbfwma,
     ];
 
     /// Bit index in [`FeatureSet`].
@@ -68,6 +77,51 @@ impl Feature {
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
 struct AuxVal {
     hwcap: Hwcap,
+    /// `RISCV_HWPROBE_KEY_IMA_EXT_0`, or 0 when unavailable.
+    ext0: u64,
+}
+
+/// `RISCV_HWPROBE_KEY_IMA_EXT_0` bits (Linux UAPI `asm/hwprobe.h`).
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+mod ext0 {
+    pub const ZVFH: u64 = 1 << 30;
+    pub const ZVFBFMIN: u64 = 1 << 53;
+    pub const ZVFBFWMA: u64 = 1 << 54;
+}
+
+/// `riscv_hwprobe(2)` key `RISCV_HWPROBE_KEY_IMA_EXT_0`.
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "riscv32", target_arch = "riscv64")
+))]
+fn hwprobe_ext0() -> u64 {
+    const KEY_IMA_EXT_0: i64 = 4;
+    const NR_RISCV_HWPROBE: usize = 258;
+    let mut pair = [KEY_IMA_EXT_0 as usize, 0usize];
+    let ret: usize;
+    // SAFETY: Linux riscv syscall ABI; `pair` is one valid {key, value} entry
+    // and the cpu set is empty (all online harts). Unknown syscall -> error.
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") NR_RISCV_HWPROBE,
+            inlateout("a0") pair.as_mut_ptr() => ret,
+            in("a1") 1usize, in("a2") 0usize, in("a3") 0usize, in("a4") 0usize,
+            options(nostack),
+        );
+    }
+    if ret == 0 && pair[0] as i64 == KEY_IMA_EXT_0 { pair[1] as u64 } else { 0 }
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "android", target_os = "freebsd"),
+    not(all(
+        target_os = "linux",
+        any(target_arch = "riscv32", target_arch = "riscv64")
+    ))
+))]
+fn hwprobe_ext0() -> u64 {
+    0
 }
 
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
@@ -78,6 +132,7 @@ impl AuxVal {
         unsafe {
             return Self {
                 hwcap: libc::getauxval(libc::AT_HWCAP) as Hwcap,
+                ext0: hwprobe_ext0(),
             };
         }
         #[cfg(target_os = "freebsd")]
@@ -93,6 +148,7 @@ impl AuxVal {
             };
             Self {
                 hwcap: out as Hwcap,
+                ext0: hwprobe_ext0(),
             }
         }
     }
@@ -106,6 +162,9 @@ impl AuxVal {
             Feature::D => self.hwcap & hwcap::D != 0,
             Feature::C => self.hwcap & hwcap::C != 0,
             Feature::V => self.hwcap & hwcap::V != 0,
+            Feature::Zvfh => self.ext0 & ext0::ZVFH != 0 && self.hwcap & hwcap::V != 0,
+            Feature::Zvfbfmin => self.ext0 & ext0::ZVFBFMIN != 0 && self.hwcap & hwcap::V != 0,
+            Feature::Zvfbfwma => self.ext0 & ext0::ZVFBFWMA != 0 && self.hwcap & hwcap::V != 0,
         }
     }
 }
@@ -156,6 +215,18 @@ impl FeatureSet {
             #[cfg(target_feature = "v")]
             {
                 set |= 1 << Feature::V.bit();
+            }
+            #[cfg(all(target_feature = "v", target_feature = "zvfh"))]
+            {
+                set |= 1 << Feature::Zvfh.bit();
+            }
+            #[cfg(all(target_feature = "v", target_feature = "zvfbfmin"))]
+            {
+                set |= 1 << Feature::Zvfbfmin.bit();
+            }
+            #[cfg(all(target_feature = "v", target_feature = "zvfbfwma"))]
+            {
+                set |= 1 << Feature::Zvfbfwma.bit();
             }
             // Many none-elf targets enable m/a/f/d/c in the base ISA string without
             // exposing every letter as target_feature; assume gc floor when none

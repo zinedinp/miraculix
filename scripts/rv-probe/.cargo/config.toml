@@ -1,0 +1,9 @@
+# Run: cd scripts/rv-probe && cargo run   (needs qemu-riscv64)
+# no_std binary with its own _start; exit status = bitmask of failed checks.
+# 0 = all passed. 98 = Zvfh, 97 = Zvfbfmin, 96 = Zvfbfwma not detected (check the qemu -cpu flags).
+[build]
+target = "riscv64gc-unknown-linux-gnu"
+[target.riscv64gc-unknown-linux-gnu]
+linker = "rust-lld"
+runner = "qemu-riscv64 -cpu rv64,v=true,zvfh=true,zfbfmin=true,zvfbfmin=true,zvfbfwma=true,vlen=128"
+rustflags = ["-Crelocation-model=static", "-Clink-arg=--no-pie", "-Clink-arg=-Lstub"]
