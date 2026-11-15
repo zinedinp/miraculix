@@ -511,3 +511,23 @@ fn fn_macros_accept_const_lifetime_and_type_generics() {
     assert_eq!(widen_sum(avx, [1u8, 2, 3]), 6);
     assert_eq!(mixed(avx, &[4.5f32, 1.0]), 4.5);
 }
+
+crate::avx2_fn! {
+    fn only_in_ret<const K: usize>(avx: Avx2) -> [u32; K] {
+        let _ = avx;
+        [7; K]
+    }
+}
+crate::avx2_fn! {
+    fn nowhere<const K: usize>(avx: Avx2) -> u32 {
+        let _ = avx;
+        K as u32
+    }
+}
+#[test]
+fn fn_macros_forward_params_not_inferable_from_signature() {
+    let Some(avx) = Avx2::detect() else { return };
+    let r: [u32; 3] = only_in_ret(avx);
+    assert_eq!(r, [7; 3]);
+    assert_eq!(nowhere::<5>(avx), 5);
+}

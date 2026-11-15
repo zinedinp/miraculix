@@ -77,6 +77,7 @@
 //! | [`avx512vl_fn!`] | `avx512f,avx512vl` | `Avx512f` + VL token(s) |
 //! | [`avx512vnni_fn!`] | `avx512vnni` | `Avx512Vnni` |
 //! | [`avx512vbmi_fn!`] | `avx512f,avx512bw,avx512vbmi` | `Avx512f`, `Avx512Bw`, `Avx512Vbmi` |
+//! | [`avx512_v4_vbmi_fn!`] | V4 bundle + `avx512vbmi` | `V4Vbmi` |
 //! | [`avx512vbmi2_fn!`] | `avx512vbmi2` | `Avx512Vbmi2` |
 //! | [`avx512fp16_fn!`] | `avx512fp16` | `Avx512Fp16` |
 //! | [`avx512bf16_fn!`] | `avx512bf16,avx512f` | `Avx512Bf16` |
@@ -130,13 +131,13 @@ macro_rules! __miraculix_tf_fn {
 	// No generics.
 	($features:literal ; $(#[$attr:meta])* $vis:vis fn $name:ident ($($arg:ident : $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block) => {
 		$crate::__miraculix_tf_emit! {
-			$features ; [$(#[$attr])*] $vis $name [] ($($arg : $ty),*) [$(-> $ret)?] $body
+			$features ; [$(#[$attr])*] $vis $name [] [] ($($arg : $ty),*) [$(-> $ret)?] $body
 		}
 	};
 	// Generics: walk the parameter list, accumulating it as plain tokens.
 	($features:literal ; $(#[$attr:meta])* $vis:vis fn $name:ident < $($rest:tt)*) => {
 		$crate::__miraculix_tf_gen! {
-			$features ; [$(#[$attr])*] $vis $name [] $($rest)*
+			$features ; [$(#[$attr])*] $vis $name [] [] $($rest)*
 		}
 	};
 }
@@ -145,47 +146,47 @@ macro_rules! __miraculix_tf_fn {
 #[macro_export]
 macro_rules! __miraculix_tf_gen {
 	// const N: T ,   /   const N: T >
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] const $c:ident : $t:ty , $($r:tt)*) => {
-		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* const $c : $t ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] const $c:ident : $t:ty , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* const $c : $t  ,] [$($tf)* $c ,] $($r)* }
 	};
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] const $c:ident : $t:ty > $($r:tt)*) => {
-		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* const $c : $t ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] const $c:ident : $t:ty > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* const $c : $t  ,] [$($tf)* $c ,] $($r)* }
 	};
 	// 'a
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $l:lifetime , $($r:tt)*) => {
-		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $l ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] $l:lifetime , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $l  ,] [$($tf)*] $($r)* }
 	};
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $l:lifetime > $($r:tt)*) => {
-		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $l ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] $l:lifetime > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $l  ,] [$($tf)*] $($r)* }
 	};
 	// T: Bound
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident : $b:path , $($r:tt)*) => {
-		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $p : $b ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] $p:ident : $b:path , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $p : $b  ,] [$($tf)* $p ,] $($r)* }
 	};
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident : $b:path > $($r:tt)*) => {
-		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $p : $b ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] $p:ident : $b:path > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $p : $b  ,] [$($tf)* $p ,] $($r)* }
 	};
 	// T
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident , $($r:tt)*) => {
-		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $p ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] $p:ident , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $p  ,] [$($tf)* $p ,] $($r)* }
 	};
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident > $($r:tt)*) => {
-		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $p ,] $($r)* }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] $p:ident > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $p  ,] [$($tf)* $p ,] $($r)* }
 	};
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __miraculix_tf_args {
-	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] ($($arg:ident : $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block) => {
-		$crate::__miraculix_tf_emit! { $f ; $at $v $n [$($acc)*] ($($arg : $ty),*) [$(-> $ret)?] $body }
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] [$($tf:tt)*] ($($arg:ident : $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block) => {
+		$crate::__miraculix_tf_emit! { $f ; $at $v $n [$($acc)*] [$($tf)*] ($($arg : $ty),*) [$(-> $ret)?] $body }
 	};
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __miraculix_tf_emit {
-	($features:literal ; [$($attr:tt)*] $vis:vis $name:ident [$($gen:tt)*] ($($arg:ident : $ty:ty),*) [$($ret:tt)*] $body:block) => {
+	($features:literal ; [$($attr:tt)*] $vis:vis $name:ident [$($gen:tt)*] [$($tf:tt)*] ($($arg:ident : $ty:ty),*) [$($ret:tt)*] $body:block) => {
 		$($attr)*
 		$vis fn $name <$($gen)*> ($($arg : $ty),*) $($ret)* {
 			#[target_feature(enable = $features)]
@@ -196,7 +197,7 @@ macro_rules! __miraculix_tf_emit {
 			// Safety: callers only reach a named `*_fn!` wrapper while holding
 			// tokens that prove every feature in `$features`.
 			#[allow(unused_unsafe)]
-			unsafe { __impl($($arg),*) }
+			unsafe { __impl::<$($tf)*>($($arg),*) }
 		}
 	};
 }
@@ -408,6 +409,21 @@ macro_rules! avx512_v4_fn {
 	($($tt:tt)*) => {
 		$crate::__miraculix_tf_fn! {
 			"sse,sse2,fxsr,sse3,ssse3,sse4.1,sse4.2,popcnt,avx,avx2,bmi1,bmi2,fma,lzcnt,avx512f,avx512bw,avx512cd,avx512dq,avx512vl" ; $($tt)*
+		}
+	};
+}
+
+/// Wrap a body under the x86-64-v4 core plus `avx512vbmi`.
+///
+/// Enables
+/// `sse,sse2,fxsr,sse3,ssse3,sse4.1,sse4.2,popcnt,avx,avx2,bmi1,bmi2,fma,lzcnt,avx512f,avx512bw,avx512cd,avx512dq,avx512vl,avx512vbmi`.
+/// Hold a [`crate::x86::bundles::V4Vbmi`], or tokens for every extension the body actually calls. Prefer a
+/// narrower macro when possible.
+#[macro_export]
+macro_rules! avx512_v4_vbmi_fn {
+	($($tt:tt)*) => {
+		$crate::__miraculix_tf_fn! {
+			"sse,sse2,fxsr,sse3,ssse3,sse4.1,sse4.2,popcnt,avx,avx2,bmi1,bmi2,fma,lzcnt,avx512f,avx512bw,avx512cd,avx512dq,avx512vl,avx512vbmi" ; $($tt)*
 		}
 	};
 }

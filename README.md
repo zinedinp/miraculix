@@ -452,7 +452,13 @@ can be written once:
 `*_fn!` kernels may be generic (const parameters, lifetimes, single-bound type
 parameters).
 
-Still missing (tracked in `TODO.md`): composite tokens. The Neon ops were tested under `qemu-aarch64`.
+**Level bundles.** `x86::bundles::{V3, V4, V4Vbmi}` hold the tokens of one level
+(`V3::detect()` -> `v.avx2`, `v.fma`, ...; `V4` adds AVX-512 F/BW/CD/DQ/VL as
+`v.avx512bw`, ...; `V4Vbmi` adds `vbmi`). Pair them with `avx_v3_fn!`,
+`avx512_v4_fn!`, `avx512_v4_vbmi_fn!`.
+
+Nothing from the original gap list is open except the portable lane layer (a
+separate crate). The Neon ops were tested under `qemu-aarch64`.
 
 **Big-endian AArch64** builds without a feature flag (`cfg(target_endian)`
 selects the lane-order fixes). Checked under `qemu-aarch64_be` with

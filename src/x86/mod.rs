@@ -22,6 +22,7 @@ pub mod auto_up;
 /// Short alias for [`auto_up`] (same module). Prefer the `auto_up` name in new code.
 pub use auto_up as auto;
 /// ISA feature enum and bitset ([`Feature`], [`FeatureSet`]).
+pub mod bundles;
 pub mod features;
 /// `avx_fn!` / `avx2_fn!` / ... trampolines for multi-op kernels.
 pub mod fn_macros;
