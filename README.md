@@ -421,19 +421,25 @@ helper. Search by the miraculix name instead (`<op>_<type>x<lanes>`, e.g.
 | Byte permutes at 512 bits | `Avx512Vbmi::permutexvar_u8x64`, `permutex2var_u8x64` | `src/x86/ops/avx512/avx512vbmi.rs` |
 | Neon horizontal add | `vaddvq_u8` and friends (the 128-bit forms only) | `src/aarch64/ops/neon/neon.rs` |
 
-Still missing as of 0.4.1-alpha, so no existing name to find (tracked in
-`TODO.md`):
+Added after the Melon TODO (all in `src/x86/ops/extra.rs`, on the usual
+tokens). Unpack, byte shuffle and `permute2x128` work **inside each 128-bit
+lane**; see the module doc for how to restore order:
 
-- f32 <-> f64 conversions on x86 and Neon (the `simd_cvt_widen` /
-  `simd_cvt_narrow` macros in `src/x86/ops/macros/cvt.rs` exist, but nothing
-  instantiates them for this pair);
-- byte and word unpack (`unpack{lo,hi}_epi8/16`) as public ops (only used
-  internally in `sse2.rs` and `avx2.rs`; public ones exist for i16/i32/i64/f32
-  at 128 bits and f32/f64 at 256/512);
-- 256/512-bit byte shuffle, zero-extend `cvtepu8_epi16`, cross-lane
-  `permute2x128` for integers, runtime-count shifts (`sll`), partial loads;
-- Neon table lookups (`vqtbl*`), zips, `vtstq_u8`, and a `movemask` helper
-  (`src/aarch64/ops/mod.rs` lists table lookups as deliberately not wrapped yet).
+| Need | Name |
+|---|---|
+| f32 <-> f64 | `Sse2::cvt_f32x4_to_f64x2` / `cvt_f64x2_to_f32x4`, `Avx::cvt_f32x4_to_f64x4` / `cvt_f64x4_to_f32x4`, `Avx512f::cvt_f32x8_to_f64x8` / `cvt_f64x8_to_f32x8` |
+| Interleave | `unpack{lo,hi}_u8x16` (Sse2), `_u8x32/_i16x16/_i32x8/_i64x4` (Avx2), `_u8x64/_i16x32` (Avx512Bw), `_i32x16/_i64x8` (Avx512f) |
+| Byte shuffle | `Avx2::shuffle_i8x32`, `Avx512Bw::shuffle_i8x64` |
+| Zero-extend u8 -> u16 | `Sse41::cvtepu8_u16x8`, `Avx2::cvtepu8_u16x16`, `Avx512Bw::cvtepu8_u16x32` |
+| Runtime-count shift | `sll_u16x8`/`srl_u16x8` (Sse2), `x16` (Avx2), `x32` (Avx512Bw) |
+| Partial loads | `Sse2::loadl_u8x8`, `cvtsi32_u32x4`, `cvtsi64_u64x2` |
+| Cross-lane | `Avx2::permute2x128_i64x4`, `Avx2::broadcast_u8x16_to_x32`, `Avx512f::broadcast_u8x16_to_x64`, `Avx512f::permutex2var_u64x8` |
+| Byte masks as `u64` | `Avx512Bw::test_u8x64_mask(a, b)` (bit test per byte), `mask_blend_u8x64(k, a, b)` |
+
+Still missing (tracked in `TODO.md`): all Neon items (table lookups
+`vqtbl*`, zips, `vtstq_u8`, f32 <-> f64, a `movemask` helper; table lookups
+are listed as deliberately not wrapped in `src/aarch64/ops/mod.rs`),
+const-generic `*_fn!`, and composite tokens.
 
 ---
 

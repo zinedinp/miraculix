@@ -28,6 +28,7 @@
 
 pub mod avx;
 pub mod avx512;
+mod extra;
 mod macros;
 pub mod mmx;
 pub mod other;
