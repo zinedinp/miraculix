@@ -20,7 +20,7 @@ pub struct Dsp(());
 impl Dsp {
     /// Probe once: `Some(token)` if the DSP extension is available, else `None`.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::aarch32::detect_features())
     }
 
     /// Build a token from an existing [`crate::aarch32::FeatureSet`].

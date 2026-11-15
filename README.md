@@ -22,15 +22,13 @@ ops with no scalar tail, vector-length tokens, and the SVE2 crypto /
 bit-permute / matrix extensions) plus an `auto` slice layer that takes the
 SVE rung when the CPU has it. SME/SME2 are **detect-only (TODO)**. Other
 platforms already have detect support, and the most-used targets get richer
-operation support first. Cross-architecture names: [SIMD_NAME_MAP.md](SIMD_NAME_MAP.md);
-minimum Rust per feature: [RUST_VERSIONS.md](RUST_VERSIONS.md) and
-[RUST_VERSIONS_AARCH64.md](RUST_VERSIONS_AARCH64.md).
+operation support first. Minimum Rust per feature: [RUST_VERSIONS.md](RUST_VERSIONS.md).
 
 ## Installation
 
 ```toml
 [dependencies]
-miraculix = "0.1"
+miraculix = "0.4"
 ```
 
 ## Quick start: common SIMD patterns
@@ -288,6 +286,11 @@ their module (`aarch64::ArmLevel`, macOS `AppleLevel`, etc.).
 
 A token is a zero-sized proof value. You only get one if the feature is real.
 
+`Token::detect()` uses the cached `detect_features()`, so it is cheap enough
+for a hot path. For a deliberate re-probe, build the token from the fresh set
+(there is no per-token `detect_fresh()`):
+`Avx2::from_features(miraculix::x86::detect_features_fresh())`.
+
 ```rust
 use miraculix::x86::ops::avx::avx2::Avx2;
 
@@ -331,7 +334,14 @@ work unless you need a specific width.
 ## Path 3: Multi-op kernel macros
 
 Closures and separate token methods can leave a chain of calls. When several
-ops must live in one `#[target_feature]` function, wrap the body:
+ops must live in one `#[target_feature]` function, wrap the body.
+
+The fixed-width ops take and return arrays (`[f32; 8]`, `[u8; 16]`). Inside a
+`*_fn!` body every op is inlined and those arrays stay in registers, so a
+whole load/compute/store loop can sit in one body with no scalar work in
+between. Called outside such a body, each op is its own call with a memory
+round trip. Closures and `[T; N].map` inside the body can also block that
+inlining; prefer plain loops.
 
 ```rust
 use miraculix::x86::ops::avx::avx::Avx;
@@ -370,6 +380,7 @@ if let Some(avx) = Avx::detect() {
 | `avx512bw_fn!` | `avx512f,avx512bw,avx2,sse2,ssse3` |
 | `avx512vl_fn!` | `avx512f,avx512vl` |
 | `avx512vnni_fn!` | `avx512vnni` |
+| `avx512vbmi_fn!` | `avx512f,avx512bw,avx512vbmi` |
 | `avx512vbmi2_fn!` | `avx512vbmi2` |
 | `avx512fp16_fn!` | `avx512fp16` |
 | `avx512bf16_fn!` | `avx512bf16,avx512f` |
@@ -391,6 +402,41 @@ selection rules live in the rustdoc for `x86::fn_macros`.
 
 ---
 
+## Looking for an op? Names and where things live
+
+The ops are not named after the Intel intrinsics, so grepping for
+`_mm512_test_epi8_mask` or `_mm_cvtps_pd` finds nothing, or only a private
+helper. Search by the miraculix name instead (`<op>_<type>x<lanes>`, e.g.
+`movemask_i8x16`, `select_i8x64`). Some ops that look missing already exist:
+
+| You want | Already there | Where |
+|---|---|---|
+| Uncached CPU probe | `x86::detect_features_fresh()`, then `Token::from_features(..)` | `src/x86/mod.rs` |
+| 64-bit byte mask from a 64-byte vector (`vpmovb2m`) | `Avx512Bw::movepi8_mask([i8; 64]) -> u64` (sign bit of each byte). Also `movepi16/32/64_mask`, and the `Vl` tokens for 128/256 bits | `src/x86/ops/avx512/kmask/bridge.rs` |
+| Mask back to a vector (`vpmovm2b`) | `Avx512Bw::movm_epi8` and siblings | `src/x86/ops/avx512/kmask/bridge.rs` |
+| Mask logic, shifts, tests (`kand`, `kshift`, `ktest`) | `kmask/logic.rs`, `shift.rs`, `ktest.rs` | `src/x86/ops/avx512/kmask/` |
+| 64-lane blend | `Avx512Bw::select_i8x64(a, b, mask)`; the mask is a vector (all-0 / all-1 lanes, e.g. from a compare), not a `u64` | `src/x86/ops/avx512/avx512bw.rs` |
+| `movemask` for bytes | `Sse2::movemask_i8x16`, `Avx2::movemask_i8x32` | `sse2.rs`, `avx2.rs` |
+| Byte shuffle | `Ssse3::shuffle_i8x16` (128-bit only) | `src/x86/ops/sse/ssse3.rs` |
+| Byte permutes at 512 bits | `Avx512Vbmi::permutexvar_u8x64`, `permutex2var_u8x64` | `src/x86/ops/avx512/avx512vbmi.rs` |
+| Neon horizontal add | `vaddvq_u8` and friends (the 128-bit forms only) | `src/aarch64/ops/neon/neon.rs` |
+
+Still missing as of 0.4.1-alpha, so no existing name to find (tracked in
+`TODO.md`):
+
+- f32 <-> f64 conversions on x86 and Neon (the `simd_cvt_widen` /
+  `simd_cvt_narrow` macros in `src/x86/ops/macros/cvt.rs` exist, but nothing
+  instantiates them for this pair);
+- byte and word unpack (`unpack{lo,hi}_epi8/16`) as public ops (only used
+  internally in `sse2.rs` and `avx2.rs`; public ones exist for i16/i32/i64/f32
+  at 128 bits and f32/f64 at 256/512);
+- 256/512-bit byte shuffle, zero-extend `cvtepu8_epi16`, cross-lane
+  `permute2x128` for integers, runtime-count shifts (`sll`), partial loads;
+- Neon table lookups (`vqtbl*`), zips, `vtstq_u8`, and a `movemask` helper
+  (`src/aarch64/ops/mod.rs` lists table lookups as deliberately not wrapped yet).
+
+---
+
 ## Features (Cargo)
 
 | Feature | Default | Purpose |
@@ -402,7 +448,7 @@ selection rules live in the rustdoc for `x86::fn_macros`.
 | `wasm-simd` | on | wasm: compile `wasm::ops` / `wasm::auto` (simd128). Turn off (`default-features = false`) for a module that must load on engines without simd128; detection stays |
 | `wasm-relaxed-simd` | off | Compile wasm relaxed-simd bodies (`wasm::ops::relaxed`, top `fmadd` rung). Off because engines without relaxed-simd reject the whole module |
 
-MSRV: **1.98.0** (see `RUST_VERSIONS.md` and `RUST_VERSIONS_AARCH64.md` for per-extension floors).
+MSRV: **1.98.0** (see `RUST_VERSIONS.md` for per-extension floors).
 
 ---
 

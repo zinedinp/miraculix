@@ -469,7 +469,7 @@ pub struct Avx512BitalgVl(());
 impl Avx512BitalgVl {
     /// `None` unless the CPU has both AVX512BITALG and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -566,7 +566,7 @@ pub struct Avx512DqVl(());
 impl Avx512DqVl {
     /// `None` unless the CPU has both AVX-512DQ and AVX-512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -1582,7 +1582,7 @@ pub struct Avx512FVl(());
 impl Avx512FVl {
     /// `None` unless the CPU has both AVX-512F and AVX-512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -2583,7 +2583,7 @@ pub struct Avx512BwVl(());
 impl Avx512BwVl {
     /// `None` unless the CPU has both AVX-512BW and AVX-512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -3280,7 +3280,7 @@ pub struct Avx512IfmaVl(());
 impl Avx512IfmaVl {
     /// `None` unless the CPU has both AVX512IFMA and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -3411,7 +3411,7 @@ pub struct Avx512VbmiVl(());
 impl Avx512VbmiVl {
     /// `None` unless the CPU has both AVX512VBMI and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -3627,7 +3627,7 @@ pub struct Avx512Vbmi2Vl(());
 impl Avx512Vbmi2Vl {
     /// `None` unless the CPU has both AVX512VBMI2 and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -4613,7 +4613,7 @@ pub struct Avx512VnniVl(());
 impl Avx512VnniVl {
     /// `None` unless the CPU has both AVX512VNNI and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -4800,7 +4800,7 @@ pub struct Avx512VpopcntdqVl(());
 impl Avx512VpopcntdqVl {
     /// `None` unless the CPU has both AVX512VPOPCNTDQ and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -4858,7 +4858,7 @@ pub struct Avx512Bf16Vl(());
 impl Avx512Bf16Vl {
     /// `None` unless the CPU has both AVX512BF16 and AVX512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

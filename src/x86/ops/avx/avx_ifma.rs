@@ -17,7 +17,7 @@ pub struct AvxIfma(());
 impl AvxIfma {
     /// `None` if the CPU (or the compile-time target) lacks AVX-IFMA.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

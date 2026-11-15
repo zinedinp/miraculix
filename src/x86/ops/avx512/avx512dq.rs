@@ -149,7 +149,7 @@ pub struct Avx512Dq(());
 impl Avx512Dq {
     /// `None` if the CPU (or the compile-time target) lacks AVX-512DQ.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From resolved tier (`V4` lists `Feature::Avx512dq`); no new CPUID.

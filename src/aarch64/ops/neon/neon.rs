@@ -102,7 +102,7 @@ impl Neon {
     /// On a conforming AArch64 CPU this never returns `None`; it exists so the
     /// shape matches every other token in the crate.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::aarch64::detect_features())
     }
 
     /// Build a token from a set you already have (e.g. [`crate::aarch64::detect_features`]).

@@ -27,7 +27,7 @@ pub struct Avx(());
 impl Avx {
     /// `None` if the CPU (or the compile-time target) lacks AVX.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From resolved tier (`V3`/`V4` list `Feature::Avx`); no new CPUID.

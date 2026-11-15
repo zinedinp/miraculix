@@ -6,6 +6,16 @@
 //! This crate is `no_std` (tests excepted). Each supported architecture is a
 //! top-level module gated by `cfg(target_arch = ...)`.
 //!
+//! ## Searching for an op
+//!
+//! Ops are named `<op>_<type>x<lanes>` (`movemask_i8x16`, `select_i8x64`),
+//! not after the Intel intrinsics, so grepping `_mm512_...` finds only
+//! private helpers. Some things that look missing exist under another name,
+//! for example AVX-512 byte masks as `u64` (`Avx512Bw::movepi8_mask` in
+//! `x86/ops/avx512/kmask/bridge.rs`) and the uncached CPU probe
+//! (`x86::detect_features_fresh`). See the README section "Looking for an
+//! op?" for the full list, including what is genuinely still missing.
+//!
 //! ## Which module do I import?
 //!
 //! | Your target | Module |

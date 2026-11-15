@@ -33,7 +33,7 @@ pub struct Avx512Fp16(());
 impl Avx512Fp16 {
     /// `None` if the CPU (or the compile-time target) lacks AVX-512FP16.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -50,7 +50,7 @@ pub struct Avx512Fp16Vl(());
 impl Avx512Fp16Vl {
     /// `None` unless the CPU has both AVX-512FP16 and AVX-512VL.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

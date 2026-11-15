@@ -83,7 +83,7 @@ pub struct Avx512f(());
 impl Avx512f {
     /// `None` if the CPU (or the compile-time target) lacks AVX-512F.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From resolved tier (`V4` lists `Feature::Avx512f`); no new CPUID.

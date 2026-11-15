@@ -18,7 +18,7 @@ impl Avx512Er {
     /// `None` on every CPU this crate can detect on (Xeon Phi only; platform
     /// EOL).
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

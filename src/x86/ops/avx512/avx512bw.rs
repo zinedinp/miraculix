@@ -40,7 +40,7 @@ pub struct Avx512Bw(());
 impl Avx512Bw {
     /// `None` if the CPU (or the compile-time target) lacks AVX-512BW.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From resolved tier (`V4` lists `Feature::Avx512bw`); no new CPUID.

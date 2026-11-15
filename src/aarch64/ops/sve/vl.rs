@@ -56,7 +56,7 @@ macro_rules! vl_token {
 			/// Probe once: `Some(token)` if SVE is available **and** its vector
 			#[doc = concat!("length is at least ", $bits, " bits.")]
 			pub fn detect() -> Option<Self> {
-				Self::from_features(FeatureSet::detect())
+				Self::from_features(crate::aarch64::detect_features())
 			}
 
 			/// Build a token from a set you already have (e.g.

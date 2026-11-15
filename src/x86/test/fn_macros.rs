@@ -8,6 +8,7 @@ use crate::x86::ops::avx512::avx512bf16::Avx512Bf16;
 use crate::x86::ops::avx512::avx512bw::Avx512Bw;
 use crate::x86::ops::avx512::avx512dq::Avx512Dq;
 use crate::x86::ops::avx512::avx512f::Avx512f;
+use crate::x86::ops::avx512::avx512vbmi::Avx512Vbmi;
 use crate::x86::ops::avx512::avx512vbmi2::Avx512Vbmi2;
 use crate::x86::ops::avx512::avx512vl::Avx512FVl;
 use crate::x86::ops::avx512::avx512vnni::Avx512Vnni;
@@ -375,6 +376,35 @@ fn avx512vnni_fn_runs() {
         return;
     };
     let _ = vnni_dot(vnni, [0i32; 16], [0u8; 64], [0i8; 64]);
+}
+
+crate::avx512vbmi_fn! {
+    fn permute_via_vbmi_fn(
+        f: Avx512f,
+        bw: Avx512Bw,
+        v: Avx512Vbmi,
+        idx: [u8; 64],
+        a: [u8; 64],
+    ) -> [u8; 64] {
+        let _ = (f, bw);
+        v.permutexvar_u8x64(idx, a)
+    }
+}
+
+#[test]
+fn avx512vbmi_fn_runs() {
+    let set = detect_features();
+    let (Some(f), Some(bw), Some(v)) = (
+        Avx512f::from_features(set),
+        Avx512Bw::from_features(set),
+        Avx512Vbmi::from_features(set),
+    ) else {
+        return;
+    };
+    let a: [u8; 64] = core::array::from_fn(|i| i as u8);
+    let idx: [u8; 64] = core::array::from_fn(|i| (63 - i) as u8);
+    let out = permute_via_vbmi_fn(f, bw, v, idx, a);
+    assert_eq!(out, idx);
 }
 
 crate::avx512vbmi2_fn! {

@@ -109,7 +109,7 @@ macro_rules! wasm_token {
 			/// `Some(token)` if the feature is compiled in (`cfg`) or switched on
 			/// at run time (`crate::wasm::enable_simd128` and friends).
 			pub fn detect() -> Option<Self> {
-				Self::from_features($crate::wasm::FeatureSet::detect())
+				Self::from_features($crate::wasm::detect_features())
 			}
 
 			/// Build a token from a set you already have (e.g. from

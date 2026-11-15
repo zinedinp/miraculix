@@ -12,7 +12,7 @@ pub struct Rtm(());
 impl Rtm {
     /// `None` if RTM missing or fused off (2021 erratum).
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

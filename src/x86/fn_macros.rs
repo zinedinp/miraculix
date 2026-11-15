@@ -70,6 +70,7 @@
 //! | [`avx512bw_fn!`] | `avx512f,avx512bw,avx2,sse2,ssse3` | all five |
 //! | [`avx512vl_fn!`] | `avx512f,avx512vl` | `Avx512f` + VL token(s) |
 //! | [`avx512vnni_fn!`] | `avx512vnni` | `Avx512Vnni` |
+//! | [`avx512vbmi_fn!`] | `avx512f,avx512bw,avx512vbmi` | `Avx512f`, `Avx512Bw`, `Avx512Vbmi` |
 //! | [`avx512vbmi2_fn!`] | `avx512vbmi2` | `Avx512Vbmi2` |
 //! | [`avx512fp16_fn!`] | `avx512fp16` | `Avx512Fp16` |
 //! | [`avx512bf16_fn!`] | `avx512bf16,avx512f` | `Avx512Bf16` |
@@ -288,6 +289,16 @@ macro_rules! avx512vl_fn {
 #[macro_export]
 macro_rules! avx512vnni_fn {
 	($($tt:tt)*) => { $crate::__miraculix_tf_fn! { "avx512vnni" ; $($tt)* } };
+}
+
+/// Wrap a body under `avx512f,avx512bw,avx512vbmi` (byte permutes such as
+/// `vpermi2b`, together with the 512-bit loads and masks they need).
+///
+/// Hold [`crate::x86::ops::avx512::avx512vbmi::Avx512Vbmi`] plus the
+/// `Avx512f` and `Avx512Bw` tokens.
+#[macro_export]
+macro_rules! avx512vbmi_fn {
+	($($tt:tt)*) => { $crate::__miraculix_tf_fn! { "avx512f,avx512bw,avx512vbmi" ; $($tt)* } };
 }
 
 /// Wrap a body under `avx512vbmi2` (compress/expand, variable shifts).

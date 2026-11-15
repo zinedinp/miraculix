@@ -25,7 +25,7 @@ macro_rules! arm_token {
 		impl $Token {
 			/// Probe once: `Some(token)` if the extension is available, else `None`.
 			pub fn detect() -> Option<Self> {
-				Self::from_features($crate::arm_shared::host::FeatureSet::detect())
+				Self::from_features($crate::arm_shared::host::detect_features())
 			}
 
 			/// Build a token from a set you already have (e.g. from the arch

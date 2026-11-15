@@ -20,7 +20,7 @@ pub struct Gfni(());
 impl Gfni {
     /// `None` if the CPU (or the compile-time target) lacks GFNI.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -38,7 +38,7 @@ pub struct Gfni512(());
 impl Gfni512 {
     /// `None` unless the CPU has both GFNI and AVX-512F.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

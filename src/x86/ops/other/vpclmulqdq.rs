@@ -16,7 +16,7 @@ pub struct Vpclmulqdq(());
 impl Vpclmulqdq {
     /// `None` if the CPU (or the compile-time target) lacks VPCLMULQDQ.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -41,7 +41,7 @@ pub struct Vpclmulqdq512(());
 impl Vpclmulqdq512 {
     /// `None` unless the CPU has both VPCLMULQDQ and AVX-512F.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

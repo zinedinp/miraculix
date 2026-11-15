@@ -62,7 +62,7 @@ macro_rules! crypto_unop_u8x16 {
 impl Aes {
     /// Probe once: `Some(token)` if the AES extension is available, else `None`.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::aarch32::detect_features())
     }
 
     /// Build a token from a set you already have (e.g.
@@ -106,7 +106,7 @@ impl Aes {
 impl Sha {
     /// Probe once: `Some(token)` if SHA1+SHA256 are available, else `None`.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::aarch32::detect_features())
     }
 
     /// Build a token from a set you already have (e.g.

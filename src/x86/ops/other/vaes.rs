@@ -18,7 +18,7 @@ pub struct Vaes(());
 impl Vaes {
     /// `None` if the CPU (or the compile-time target) lacks VAES.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
@@ -35,7 +35,7 @@ pub struct Vaes512(());
 impl Vaes512 {
     /// `None` unless the CPU has both VAES and AVX-512F.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

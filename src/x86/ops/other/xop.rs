@@ -12,7 +12,7 @@ pub struct Xop(());
 impl Xop {
     /// `None` on any CPU without XOP (every Intel CPU; AMD since ~2015).
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).

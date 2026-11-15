@@ -15,7 +15,7 @@ pub struct Sse4a(());
 impl Sse4a {
     /// `None` if the CPU (every Intel CPU; AMD without SSE4a) lacks it.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::x86::detect_features())
     }
 
     /// From a raw feature bitset (e.g. `x86::detect_features()`).
