@@ -480,7 +480,7 @@ order there.
 | `wasm-simd` | on | wasm: compile `wasm::ops` / `wasm::auto` (simd128). Turn off (`default-features = false`) for a module that must load on engines without simd128; detection stays |
 | `wasm-relaxed-simd` | off | Compile wasm relaxed-simd bodies (`wasm::ops::relaxed`, top `fmadd` rung). Off because engines without relaxed-simd reject the whole module |
 
-MSRV: **1.98.0** (see `RUST_VERSIONS.md` for per-extension floors).
+MSRV: **1.100.0** (see `RUST_VERSIONS.md` for per-extension floors).
 
 ---
 
@@ -520,10 +520,10 @@ LLVM's wasm backend has no per-function target features: with the default
 (checked by `scripts/check-asm-wasm.sh` and a wasmtime run with
 `-W simd=n`).
 
-Tests run under node (V8, wasip1) and wasmtime (wasip1, wasip2):
+Tests run under node (V8, wasip1) and wasmtime (wasip1, wasip2, wasip3):
 
 ```sh
-rustup target add wasm32-wasip1 wasm32-wasip2
+rustup target add wasm32-wasip1 wasm32-wasip2 wasm32-wasip3
 cargo install wasmtime-cli --locked
 scripts/wasm-test.sh             # runner x target x {plain, +feature, +simd128, +relaxed-simd}
 scripts/wasm-test.sh --release

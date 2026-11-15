@@ -152,9 +152,9 @@
 //! ## Testing
 //!
 //! ```sh
-//! rustup target add wasm32-wasip1 wasm32-wasip2
+//! rustup target add wasm32-wasip1 wasm32-wasip2 wasm32-wasip3
 //! cargo install wasmtime-cli --locked
-//! scripts/wasm-test.sh            # node + wasmtime, wasip1/wasip2, all feature/flag builds
+//! scripts/wasm-test.sh            # node + wasmtime, wasip1/wasip2/wasip3, all feature/flag builds
 //! scripts/wasm-test.sh --release
 //! scripts/check-asm-wasm.sh       # release codegen: SIMD loops, and none without wasm-simd
 //! ```

@@ -1,6 +1,6 @@
 # Rust version per feature
 
-Crate MSRV: **1.98.0** (`rust-version` in [Cargo.toml](Cargo.toml)).
+Crate MSRV: **1.100.0** (`rust-version` in [Cargo.toml](Cargo.toml)).
 
 ## How versions are chosen
 
