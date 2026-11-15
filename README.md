@@ -450,8 +450,14 @@ can be written once:
 | 8-byte ops | `srli_u8x8::<N>`, `sum_u8x8` |
 
 Still missing (tracked in `TODO.md`): const-generic `*_fn!` and composite
-tokens. The Neon ops were tested under `qemu-aarch64`; `aarch64_be` has not
-been run (see the module doc for what is endian-sensitive).
+tokens. The Neon ops were tested under `qemu-aarch64`.
+
+**Big-endian AArch64** builds without a feature flag (`cfg(target_endian)`
+selects the lane-order fixes). Checked under `qemu-aarch64_be` with
+`scripts/be-probe` (`cd scripts/be-probe && cargo +nightly run`): the Neon
+extras and a sample of element-wise ops pass. The other lane-position-dependent
+ops in `neon.rs` (widen/narrow halves, zips, pairwise) are not audited for lane
+order there.
 
 ---
 

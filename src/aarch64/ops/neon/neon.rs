@@ -46,7 +46,7 @@ use super::super::simd_arch::{
     vcltq_f32, vcltq_f64, vcltq_s8, vcltq_s16, vcltq_s32, vcltq_s64, vcltq_u8, vcltq_u16,
     vcltq_u32, vcltq_u64, vcnt_u8, vcntq_u8, vcvtq_f32_s32, vcvtq_f32_u32, vcvtq_f64_s64,
     vcvtq_f64_u64, vcvtq_s32_f32, vcvtq_s64_f64, vcvtq_u32_f32, vcvtq_u64_f64, vdiv_f32, vdivq_f32,
-    vdivq_f64, vdupq_n_u32, veor_s8, veor_s16, veor_s32, veor_u8, veor_u16, veor_u32, veorq_s8,
+    vdivq_f64, veor_s8, veor_s16, veor_s32, veor_u8, veor_u16, veor_u32, veorq_s8,
     veorq_s16, veorq_s32, veorq_s64, veorq_u8, veorq_u16, veorq_u32, veorq_u64, vfma_f32,
     vfmaq_f32, vfmaq_f64, vfms_f32, vfmsq_f32, vfmsq_f64, vhadd_s8, vhadd_s16, vhadd_s32, vhadd_u8,
     vhadd_u16, vhadd_u32, vhaddq_s8, vhaddq_s16, vhaddq_s32, vhaddq_u8, vhaddq_u16, vhaddq_u32,
@@ -69,7 +69,7 @@ use super::super::simd_arch::{
     vqaddq_s64, vqaddq_u8, vqaddq_u16, vqaddq_u32, vqaddq_u64, vqsub_s8, vqsub_s16, vqsub_s32,
     vqsub_u8, vqsub_u16, vqsub_u32, vqsubq_s8, vqsubq_s16, vqsubq_s32, vqsubq_s64, vqsubq_u8,
     vqsubq_u16, vqsubq_u32, vqsubq_u64, vreinterpretq_u8_u16, vreinterpretq_u8_u32,
-    vreinterpretq_u8_u64, vreinterpretq_u16_u32, vrev32q_s16, vrhadd_s8, vrhadd_s16, vrhadd_s32,
+    vreinterpretq_u8_u64, vrev32q_s16, vrhadd_s8, vrhadd_s16, vrhadd_s32,
     vrhadd_u8, vrhadd_u16, vrhadd_u32, vrhaddq_s8, vrhaddq_s16, vrhaddq_s32, vrhaddq_u8,
     vrhaddq_u16, vrhaddq_u32, vshl_s8, vshl_s16, vshl_s32, vshlq_n_s8, vshlq_n_s16, vshlq_n_s32,
     vshlq_n_s64, vshlq_n_u8, vshlq_n_u16, vshlq_n_u32, vshlq_n_u64, vshlq_s8, vshlq_s16, vshlq_s32,
@@ -4281,8 +4281,11 @@ macro_rules! neon_i16x8_cross {
             unsafe {
                 let va: int16x8_t = vld1q_s16(a.as_ptr());
                 let vb: int16x8_t = vrev32q_s16(vld1q_s16(b.as_ptr()));
-                // Little-endian: in each 32-bit pair the odd `i16` is the high half.
-                let odd_lanes: uint16x8_t = vreinterpretq_u16_u32(vdupq_n_u32(0xFFFF_0000));
+                // Mask of the odd `i16` lanes, loaded per element so lane `i` is
+                // lane `i` on both endiannesses (a `u32` splat reinterpreted
+                // as `u16` would select the even lanes on big-endian).
+                const ODD: [u16; 8] = [0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF];
+                let odd_lanes: uint16x8_t = vld1q_u16(ODD.as_ptr());
                 let vr = vbslq_s16(odd_lanes, $odd(va, vb), $even(va, vb));
                 let mut out = [0i16; 8];
                 vst1q_s16(out.as_mut_ptr(), vr);

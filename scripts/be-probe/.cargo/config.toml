@@ -1,0 +1,12 @@
+# Run: cd scripts/be-probe && cargo +nightly run   (needs qemu-aarch64_be, rust-src)
+# no_std binary with its own _start; exit status = bitmask of failed checks
+# (low byte; set HI=1 at build time for bits 8..15). 0 = all passed.
+[build]
+target = "aarch64_be-unknown-linux-musl"
+[target.aarch64_be-unknown-linux-musl]
+linker = "rust-lld"
+runner = "qemu-aarch64_be -cpu max"
+rustflags = ["-Crelocation-model=static", "-Clink-arg=--no-pie", "-Clink-arg=-Lstub", "-Ctarget-feature=-crt-static"]
+[unstable]
+build-std = ["core"]
+build-std-features = ["compiler-builtins-mem"]
