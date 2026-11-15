@@ -25,6 +25,12 @@
 //! # }
 //! ```
 //!
+//! ## Generics
+//!
+//! Kernels may be generic over const parameters, lifetimes and type
+//! parameters with a single bound: `fn f<const K: usize>(t: Avx2, a: [u32; K])`.
+//! Multi-bound lists (`T: A + B`) and `where` clauses are not supported.
+//!
 //! ## Catalog
 //!
 //! Pick the **narrowest** macro whose enabled set covers every token method
@@ -113,15 +119,78 @@
 /// if you need a feature string that is not listed yet.
 ///
 /// Syntax: `__miraculix_tf_fn!("feat1,feat2" ; fn name(...) { ... })`
+///
+/// Generics are supported: const parameters (`<const K: usize>`), lifetimes
+/// (`<'a>`) and type parameters with at most one bound (`<T: Copy>`, a bound
+/// may itself be generic, `T: Into<u32>`), in any mix. Multi-bound lists
+/// (`T: A + B`) and `where` clauses are not.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __miraculix_tf_fn {
-	($features:literal ; $(#[$attr:meta])* $vis:vis fn $name:ident $(<$($gen:tt),* $(,)?>)? ($($arg:ident : $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block) => {
-		$(#[$attr])*
-		$vis fn $name $(<$($gen),*>)? ($($arg : $ty),*) $(-> $ret)? {
+	// No generics.
+	($features:literal ; $(#[$attr:meta])* $vis:vis fn $name:ident ($($arg:ident : $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block) => {
+		$crate::__miraculix_tf_emit! {
+			$features ; [$(#[$attr])*] $vis $name [] ($($arg : $ty),*) [$(-> $ret)?] $body
+		}
+	};
+	// Generics: walk the parameter list, accumulating it as plain tokens.
+	($features:literal ; $(#[$attr:meta])* $vis:vis fn $name:ident < $($rest:tt)*) => {
+		$crate::__miraculix_tf_gen! {
+			$features ; [$(#[$attr])*] $vis $name [] $($rest)*
+		}
+	};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __miraculix_tf_gen {
+	// const N: T ,   /   const N: T >
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] const $c:ident : $t:ty , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* const $c : $t ,] $($r)* }
+	};
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] const $c:ident : $t:ty > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* const $c : $t ,] $($r)* }
+	};
+	// 'a
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $l:lifetime , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $l ,] $($r)* }
+	};
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $l:lifetime > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $l ,] $($r)* }
+	};
+	// T: Bound
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident : $b:path , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $p : $b ,] $($r)* }
+	};
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident : $b:path > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $p : $b ,] $($r)* }
+	};
+	// T
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident , $($r:tt)*) => {
+		$crate::__miraculix_tf_gen! { $f ; $at $v $n [$($acc)* $p ,] $($r)* }
+	};
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] $p:ident > $($r:tt)*) => {
+		$crate::__miraculix_tf_args! { $f ; $at $v $n [$($acc)* $p ,] $($r)* }
+	};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __miraculix_tf_args {
+	($f:literal ; $at:tt $v:vis $n:ident [$($acc:tt)*] ($($arg:ident : $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block) => {
+		$crate::__miraculix_tf_emit! { $f ; $at $v $n [$($acc)*] ($($arg : $ty),*) [$(-> $ret)?] $body }
+	};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __miraculix_tf_emit {
+	($features:literal ; [$($attr:tt)*] $vis:vis $name:ident [$($gen:tt)*] ($($arg:ident : $ty:ty),*) [$($ret:tt)*] $body:block) => {
+		$($attr)*
+		$vis fn $name <$($gen)*> ($($arg : $ty),*) $($ret)* {
 			#[target_feature(enable = $features)]
 			#[inline]
-			unsafe fn __impl $(<$($gen),*>)? ($($arg : $ty),*) $(-> $ret)? {
+			unsafe fn __impl <$($gen)*> ($($arg : $ty),*) $($ret)* {
 				$body
 			}
 			// Safety: callers only reach a named `*_fn!` wrapper while holding

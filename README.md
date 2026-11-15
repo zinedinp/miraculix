@@ -449,8 +449,10 @@ can be written once:
 | Table lookup | `tbl_u8x16`, `tbx_u8x16`, `tbl4_u8x64`, `tbx4_u8x64`, `lookup_u8x256` (an index out of range gives 0 / keeps the fallback; this is not `pshufb`) |
 | 8-byte ops | `srli_u8x8::<N>`, `sum_u8x8` |
 
-Still missing (tracked in `TODO.md`): const-generic `*_fn!` and composite
-tokens. The Neon ops were tested under `qemu-aarch64`.
+`*_fn!` kernels may be generic (const parameters, lifetimes, single-bound type
+parameters).
+
+Still missing (tracked in `TODO.md`): composite tokens. The Neon ops were tested under `qemu-aarch64`.
 
 **Big-endian AArch64** builds without a feature flag (`cfg(target_endian)`
 selects the lane-order fixes). Checked under `qemu-aarch64_be` with

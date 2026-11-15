@@ -471,3 +471,43 @@ fn avx512_v4_fn_runs() {
     let expect: [f32; 16] = core::array::from_fn(|i| i as f32 * 2.0);
     assert_eq!(v4_double(f, a), expect);
 }
+
+// Generic parameters on `*_fn!` kernels.
+
+crate::avx2_fn! {
+    fn sum_const<const K: usize>(avx: Avx2, a: [u32; K]) -> u32 {
+        let _ = avx;
+        a.iter().sum()
+    }
+}
+
+crate::avx2_fn! {
+    fn first_ref<'a>(avx: Avx2, a: &'a [u32; 4]) -> &'a u32 {
+        let _ = avx;
+        &a[0]
+    }
+}
+
+crate::avx2_fn! {
+    pub fn widen_sum<T: Into<u32>, const K: usize>(avx: Avx2, a: [T; K]) -> u32 {
+        let _ = avx;
+        a.into_iter().map(|x| x.into()).sum()
+    }
+}
+
+crate::avx2_fn! {
+    fn mixed<'a, T: Copy, const K: usize>(avx: Avx2, a: &'a [T; K]) -> T {
+        let _ = avx;
+        a[0]
+    }
+}
+
+#[test]
+fn fn_macros_accept_const_lifetime_and_type_generics() {
+    let Some(avx) = Avx2::detect() else { return };
+    assert_eq!(sum_const(avx, [1u32, 2, 3]), 6);
+    assert_eq!(sum_const(avx, [1u32; 7]), 7);
+    assert_eq!(*first_ref(avx, &[9, 8, 7, 6]), 9);
+    assert_eq!(widen_sum(avx, [1u8, 2, 3]), 6);
+    assert_eq!(mixed(avx, &[4.5f32, 1.0]), 4.5);
+}
