@@ -112,6 +112,7 @@ mod x86 {
     /// # Safety
     /// AVX-512 F/BW/VL and AVX2 available. `src` points to 16 `f32` (`BF == false`)
     /// or 16 `u16` (`BF == true`); `out` to `16 * (BITS + 1) / 8` bytes.
+    #[inline]
     #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx2")]
     pub(super) unsafe fn row<const BITS: u32, const BF: bool>(
         src: *const u8,
@@ -177,9 +178,24 @@ fn encode_scalar_dispatch<T: Copy>(
 
 #[cfg(target_arch = "x86_64")]
 fn encode_x86<T, const BF: bool>(elem: BfpElem, src: &[T], exps: &mut [u8], data: &mut [u8]) -> bool {
-    if crate::x86::bundles::V4::detect().is_none() {
-        return false;
+    match crate::x86::bundles::V4::detect() {
+        Some(t) => {
+            encode_v4::<T, BF>(t, elem, src, exps, data);
+            true
+        }
+        None => false,
     }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn encode_v4<T, const BF: bool>(
+    _t: crate::x86::bundles::V4,
+    elem: BfpElem,
+    src: &[T],
+    exps: &mut [u8],
+    data: &mut [u8],
+) {
     let rb = elem.row_bytes();
     for (r, e) in exps.iter_mut().enumerate() {
         let s = src[r * BFP_ROW..][..BFP_ROW].as_ptr() as *const u8;
@@ -194,7 +210,49 @@ fn encode_x86<T, const BF: bool>(elem: BfpElem, src: &[T], exps: &mut [u8], data
             }
         }
     }
-    true
+}
+
+#[cfg(target_arch = "x86_64")]
+impl crate::x86::bundles::V4 {
+    /// [`bfp_encode_rows`] with the AVX-512 kernel and no per-call detection:
+    /// detect once, pass the token. Bit-exact with the portable encoder.
+    ///
+    /// # Panics
+    /// If the lengths do not match.
+    #[inline]
+    pub fn bfp_encode_rows(self, elem: BfpElem, src: &[f32], exps: &mut [u8], data: &mut [u8]) {
+        check_encode(elem, src.len(), exps.len(), data.len());
+        encode_v4::<f32, false>(self, elem, src, exps, data);
+    }
+
+    /// [`bfp_encode_rows_bf16`] with a token (see [`Self::bfp_encode_rows`]).
+    ///
+    /// # Panics
+    /// If the lengths do not match.
+    #[inline]
+    pub fn bfp_encode_rows_bf16(self, elem: BfpElem, src: &[u16], exps: &mut [u8], data: &mut [u8]) {
+        check_encode(elem, src.len(), exps.len(), data.len());
+        encode_v4::<u16, true>(self, elem, src, exps, data);
+    }
+
+    /// [`bfp_decode_rows`] taking a token (decode has no AVX-512 kernel yet,
+    /// so this is the portable decoder).
+    ///
+    /// # Panics
+    /// If the lengths do not match.
+    #[inline]
+    pub fn bfp_decode_rows(self, elem: BfpElem, exps: &[u8], data: &[u8], out: &mut [f32]) {
+        bfp_decode_rows(elem, exps, data, out);
+    }
+
+    /// [`bfp_decode_rows_bf16`] taking a token.
+    ///
+    /// # Panics
+    /// If the lengths do not match.
+    #[inline]
+    pub fn bfp_decode_rows_bf16(self, elem: BfpElem, exps: &[u8], data: &[u8], out: &mut [u16]) {
+        bfp_decode_rows_bf16(elem, exps, data, out);
+    }
 }
 
 /// Encodes `f32` rows. `src.len()` must be a multiple of [`BFP_ROW`];

@@ -489,3 +489,27 @@ fn gguf_matches_ggml() {
     y.iter().for_each(|&v| gh(&mut h, v));
     assert_eq!(h, 0xe74fcf89b24037b8, "q6_k");
 }
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn bfp_v4_token_matches_scalar() {
+    let Some(t) = crate::x86::bundles::V4::detect() else { return };
+    let words = bfp_words();
+    let f32s: Vec<f32> = words.iter().map(|&w| f32::from_bits(w)).collect();
+    let bf: Vec<u16> = words.iter().map(|&w| (w >> 16) as u16).collect();
+    for elem in [BfpElem::M7, BfpElem::M3, BfpElem::M1] {
+        let (rows, rb) = (words.len() / 16, elem.row_bytes());
+        let (mut e1, mut d1) = (vec![0u8; rows], vec![0u8; rows * rb]);
+        let (mut e2, mut d2) = (vec![0u8; rows], vec![0u8; rows * rb]);
+        t.bfp_encode_rows(elem, &f32s, &mut e1, &mut d1);
+        bfp_encode_rows_scalar(elem, &f32s, &mut e2, &mut d2);
+        assert_eq!((&e1, &d1), (&e2, &d2), "{elem:?} f32");
+        t.bfp_encode_rows_bf16(elem, &bf, &mut e1, &mut d1);
+        bfp_encode_rows_bf16_scalar(elem, &bf, &mut e2, &mut d2);
+        assert_eq!((&e1, &d1), (&e2, &d2), "{elem:?} bf16");
+        let (mut o1, mut o2) = (vec![0f32; f32s.len()], vec![0f32; f32s.len()]);
+        t.bfp_decode_rows(elem, &e1, &d1, &mut o1);
+        bfp_decode_rows(elem, &e1, &d1, &mut o2);
+        assert_eq!(o1.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), o2.iter().map(|x| x.to_bits()).collect::<Vec<_>>());
+    }
+}

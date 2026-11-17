@@ -581,6 +581,16 @@ impl Rvv {
         }
     }
 
+    /// Token-taking [`crate::formats::bfp::bfp_decode_rows`] (portable decoder).
+    pub fn bfp_decode_rows(self, elem: BfpElem, exps: &[u8], data: &[u8], out: &mut [f32]) {
+        crate::formats::bfp::bfp_decode_rows(elem, exps, data, out);
+    }
+
+    /// Token-taking [`crate::formats::bfp::bfp_decode_rows_bf16`] (portable decoder).
+    pub fn bfp_decode_rows_bf16(self, elem: BfpElem, exps: &[u8], data: &[u8], out: &mut [u16]) {
+        crate::formats::bfp::bfp_decode_rows_bf16(elem, exps, data, out);
+    }
+
     /// [`Self::bfp_encode_rows`] for bfloat16 input (`u16` bit patterns).
     ///
     /// # Panics
