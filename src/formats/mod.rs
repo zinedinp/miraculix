@@ -40,7 +40,7 @@ mod minifloat;
 pub mod mx;
 mod tf32;
 
-pub use minifloat::{MiniFloat, Overflow};
+pub use minifloat::{MiniFloat, Overflow, Special};
 pub use tf32::{round_to_tf32, round_to_tf32_slice};
 
 #[cfg(test)]

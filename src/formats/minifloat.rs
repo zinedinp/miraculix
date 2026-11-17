@@ -29,17 +29,23 @@ pub enum MiniFloat {
     Bf16,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    /// Top exponent is inf/NaN.
+/// Which bit patterns of a [`MiniFloat`] are special (infinity / NaN).
+///
+/// Accelerator kernels need this to emit the same decode/encode bit logic
+/// as [`MiniFloat::decode`] / [`MiniFloat::encode`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Special {
+    /// IEEE-like: the all-ones exponent is infinity (mantissa 0) or NaN.
     Ieee,
-    /// Only the all-ones pattern is NaN.
+    /// Only the all-ones exponent+mantissa pattern is NaN (per sign); no infinity.
     Fn,
-    /// Only `0x80` is NaN; no negative zero.
+    /// Only the "negative zero" pattern (sign bit alone) is NaN; no negative zero, no infinity.
     Fnuz,
     /// Every pattern is finite.
     Finite,
 }
+
+use Special as Kind;
 
 /// How [`MiniFloat::encode`] treats values above the largest finite value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +98,26 @@ impl MiniFloat {
     pub const fn bits(self) -> u32 {
         let (e, m, _, _) = self.params();
         1 + e + m
+    }
+
+    /// Exponent field width in bits.
+    pub const fn exp_bits(self) -> u32 {
+        self.params().0
+    }
+
+    /// Mantissa (fraction) field width in bits.
+    pub const fn man_bits(self) -> u32 {
+        self.params().1
+    }
+
+    /// Exponent bias.
+    pub const fn bias(self) -> i32 {
+        self.params().2
+    }
+
+    /// Which bit patterns are infinity / NaN.
+    pub const fn special(self) -> Special {
+        self.params().3
     }
 
     /// Bit pattern of the largest finite positive value.

@@ -37,6 +37,23 @@ fn known_values() {
 }
 
 #[test]
+fn field_params_are_consistent() {
+    for f in ALL {
+        assert_eq!(f.bits(), 1 + f.exp_bits() + f.man_bits(), "{f:?}");
+        // emax is consistent with the exposed bias and exponent width.
+        let top = (f.max_code() >> f.man_bits()) & ((1 << f.exp_bits()) - 1);
+        assert_eq!(f.emax(), top as i32 - f.bias(), "{f:?}");
+    }
+    assert_eq!(MiniFloat::E4M3Fn.special(), Special::Fn);
+    assert_eq!(MiniFloat::E4M3Fnuz.special(), Special::Fnuz);
+    assert_eq!(MiniFloat::E5M2.special(), Special::Ieee);
+    assert_eq!(MiniFloat::E2M1.special(), Special::Finite);
+    assert_eq!(MiniFloat::E5M2Fnuz.bias(), 16);
+    assert_eq!(MxElem::Fp4.float(), Some(MiniFloat::E2M1));
+    assert_eq!(MxElem::Int8.float(), None);
+}
+
+#[test]
 fn roundtrip_every_code() {
     for f in ALL {
         for c in 0..(1u32 << f.bits()) {

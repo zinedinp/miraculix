@@ -34,7 +34,8 @@ pub enum MxElem {
 }
 
 impl MxElem {
-    fn float(self) -> Option<MiniFloat> {
+    /// The [`MiniFloat`] element codec, or `None` for [`MxElem::Int8`].
+    pub fn float(self) -> Option<MiniFloat> {
         match self {
             MxElem::Fp4 => Some(MiniFloat::E2M1),
             MxElem::Fp6E2M3 => Some(MiniFloat::E2M3),
