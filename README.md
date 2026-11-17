@@ -456,8 +456,8 @@ parameters).
 the portable lane layer is open
 (a separate crate). The Neon ops were tested under `qemu-aarch64`.
 
-**Whole-slice reductions and searches** (sampling over logits). `x86::reduce`
-and `riscv::auto` have the same names and rules: NaN is ignored, ties pick the
+**Whole-slice reductions and searches** (sampling over logits). `x86::reduce`,
+`aarch64::reduce` and `riscv::auto` have the same names and rules: NaN is ignored, ties pick the
 lowest index.
 
 | Need | Name |
@@ -466,8 +466,8 @@ lowest index.
 | Index of the maximum | `argmax_f32(&[f32]) -> Option<(usize, f32)>` |
 | Top k, no allocation | `topk_f32(a, &mut idx, &mut val) -> found` (sorted descending) |
 | Threshold compare + compress | `compress_gt_f32(a, thr, &mut out) -> count` (`vcompressps` on AVX-512, `vcompress` on RVV) |
-| `exp` with a stated error | `x86::reduce::exp_f32` (relative error <= 3e-7, worst measured 1.2e-7) |
-| bfloat16 -> `f32` slice | `x86::reduce::bf16_to_f32`, `riscv::auto::bf16_to_f32` (also `formats::MiniFloat::Bf16`) |
+| `exp` with a stated error | `x86::reduce::exp_f32`, `aarch64::reduce::exp_f32` (relative error <= 3e-7, worst measured 1.2e-7; no RISC-V yet) |
+| bfloat16 -> `f32` slice | `x86::reduce::bf16_to_f32`, `aarch64::reduce::bf16_to_f32`, `riscv::auto::bf16_to_f32` (also `formats::MiniFloat::Bf16`) |
 
 **Number formats** live in `miraculix::formats` (any architecture, no token):
 FP8 / FP6 / FP4 / FP16 / BF16 (`MiniFloat`), OCP MX and NVFP4 (`mx`, block size

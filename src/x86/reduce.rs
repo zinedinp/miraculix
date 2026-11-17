@@ -367,48 +367,7 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
     exp_f32_with(best_tier(), a, out)
 }
 
-const EXP_HI: f32 = 88.722_83;
-const EXP_LO: f32 = -87.336_55;
-const LOG2E: f32 = core::f32::consts::LOG2_E;
-const LN2_HI: f32 = 0.693_359_4;
-const LN2_LO: f32 = -2.121_944_4e-4;
-const P: [f32; 6] = [
-    1.987_569_15e-4,
-    1.398_199_950_7e-3,
-    8.333_451_907_3e-3,
-    4.166_579_589_4e-2,
-    1.666_666_545_9e-1,
-    5.000_000_120_1e-1,
-];
-
-fn exp_scalar(x: f32) -> f32 {
-    if x.is_nan() {
-        return x;
-    }
-    if x < EXP_LO {
-        return 0.0;
-    }
-    if x > EXP_HI {
-        return f32::INFINITY;
-    }
-    let fx = round_ties_even(x * LOG2E);
-    let r = (x - fx * LN2_HI) - fx * LN2_LO;
-    let mut y = P[0];
-    for &c in &P[1..] {
-        y = y * r + c;
-    }
-    let z = y * (r * r) + r + 1.0;
-    // Scale in two halves: 2^128 alone is not representable, but z * 2^128 can be.
-    let n = fx as i32;
-    let n1 = n >> 1;
-    z * f32::from_bits(((n1 + 127) as u32) << 23) * f32::from_bits(((n - n1 + 127) as u32) << 23)
-}
-
-/// `round_ties_even` without relying on `std`: magic-number rounding, valid for |x| < 2^22.
-fn round_ties_even(x: f32) -> f32 {
-    const M: f32 = 12_582_912.0;
-    (x + M) - M
-}
+use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P, exp_scalar};
 
 #[doc(hidden)]
 pub fn exp_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
@@ -582,7 +541,7 @@ pub fn topk_f32(a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
 
 #[doc(hidden)]
 pub fn topk_f32_with(tier: Tier, a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
-    crate::topk::topk_with(a, idx, val, |chunk, thr, buf| compress_gt_f32_with(tier, chunk, thr, buf))
+    crate::reduce_common::topk_with(a, idx, val, |chunk, thr, buf| compress_gt_f32_with(tier, chunk, thr, buf))
 }
 
 #[cfg(test)]

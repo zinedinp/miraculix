@@ -321,7 +321,7 @@ impl Rvv {
     /// # Panics
     /// If `idx.len() != val.len()`.
     pub fn topk_f32(self, a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
-        crate::topk::topk_with(a, idx, val, |c, t, b| self.compress_gt_f32(c, t, b))
+        crate::reduce_common::topk_with(a, idx, val, |c, t, b| self.compress_gt_f32(c, t, b))
     }
 
     /// Dot product of two `i8` slices into `i32` (`vwmul` + `vwredsum`). Wraps on overflow.

@@ -13,6 +13,7 @@ pub mod features;
 /// (unlike `core::arch::arm`'s, which gate `aarch32::ops` behind
 /// `nightly-arm-neon`).
 pub mod ops;
+pub mod reduce;
 pub mod shortpath;
 pub mod tiers;
 

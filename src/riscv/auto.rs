@@ -155,7 +155,7 @@ pub fn compress_gt_f32(a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
 /// # Panics
 /// If `idx.len() != val.len()`.
 pub fn topk_f32(a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
-    crate::topk::topk_with(a, idx, val, compress_gt_f32)
+    crate::reduce_common::topk_with(a, idx, val, compress_gt_f32)
 }
 
 /// Dot product of two `i8` slices into `i32`, wrapping.
