@@ -198,3 +198,47 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
         out[i] = crate::reduce_common::exp_scalar(a[i]);
     }
 }
+
+/// `out[i] = a * q[i] + b` with `q[i]` an unsigned 16-bit integer. Portable
+/// code (two roundings); no RVV kernel yet.
+///
+/// # Panics
+/// If the lengths differ.
+pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+    assert_eq!(q.len(), out.len());
+    for i in 0..q.len() {
+        out[i] = a * (q[i] as f32) + b;
+    }
+}
+
+/// Dot product `sum(a[i] * b[i])`. Portable code (four lane sums, each
+/// product rounded separately); no RVV kernel yet. NaN and inf propagate.
+///
+/// # Panics
+/// If the lengths differ.
+pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len());
+    let mut lanes = [0f32; 4];
+    for i in 0..a.len() {
+        lanes[i % 4] += a[i] * b[i];
+    }
+    (lanes[0] + lanes[1]) + (lanes[2] + lanes[3])
+}
+
+/// `ln(sum(exp(a[i])))` without overflow, same contract as
+/// `x86::reduce::logsumexp_f32`, built from this module's max, `exp_f32` and sum.
+pub fn logsumexp_f32(a: &[f32]) -> f32 {
+    crate::reduce_common::logsumexp_with(a, reduce_max_f32, exp_f32, reduce_sum_f32)
+}
+
+/// `out[i] = a[i] - logsumexp_f32(a)`.
+///
+/// # Panics
+/// If the lengths differ.
+pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
+    assert_eq!(a.len(), out.len());
+    let l = logsumexp_f32(a);
+    for (o, &x) in out.iter_mut().zip(a) {
+        *o = x - l;
+    }
+}

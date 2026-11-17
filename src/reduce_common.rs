@@ -108,3 +108,70 @@ pub(crate) fn round_ties_even(x: f32) -> f32 {
     (x + M) - M
 }
 
+
+// ---- logsumexp / log_softmax driver ----
+
+/// Natural logarithm in `f64` (`no_std`, no `libm`): `x = m * 2^e` with
+/// `m` in `[sqrt(1/2), sqrt(2))`, then `ln m = 2 atanh((m-1)/(m+1))` as an odd
+/// series (|s| <= 0.1716, truncation error < 1e-14). Handles 0, negative, inf, NaN.
+pub(crate) fn ln_f64(x: f64) -> f64 {
+    if x.is_nan() || x < 0.0 {
+        return f64::NAN;
+    }
+    if x == 0.0 {
+        return f64::NEG_INFINITY;
+    }
+    if x == f64::INFINITY {
+        return x;
+    }
+    // Bring subnormals into the normal range.
+    let (x, adj) = if x < f64::MIN_POSITIVE { (x * 18_014_398_509_481_984.0, -54i64) } else { (x, 0) };
+    let bits = x.to_bits();
+    let mut e = ((bits >> 52) & 0x7ff) as i64 - 1023 + adj;
+    let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
+    if m > core::f64::consts::SQRT_2 {
+        m *= 0.5;
+        e += 1;
+    }
+    let s = (m - 1.0) / (m + 1.0);
+    let s2 = s * s;
+    let mut p = 0.0;
+    let mut k = 31.0;
+    while k >= 1.0 {
+        p = p * s2 + 1.0 / k;
+        k -= 2.0;
+    }
+    2.0 * s * p + (e as f64) * core::f64::consts::LN_2
+}
+
+const LSE_BLOCK: usize = 1024;
+
+/// `ln(sum(exp(a[i])))`, shifted by the maximum so it never overflows.
+/// `max(a)` ignores NaN, an empty or all-NaN slice gives `-inf`, `+inf` gives
+/// `+inf`; a NaN element makes the sum (and the result) NaN.
+/// The architecture supplies `max` (slice maximum), `exp` (see `exp_f32`) and
+/// `sum` (slice sum); blocks are added in `f64`.
+pub(crate) fn logsumexp_with(
+    a: &[f32],
+    max: impl Fn(&[f32]) -> f32,
+    exp: impl Fn(&[f32], &mut [f32]),
+    sum: impl Fn(&[f32]) -> f32,
+) -> f32 {
+    let m = max(a);
+    if m == f32::NEG_INFINITY || m == f32::INFINITY {
+        // All -inf / empty -> -inf; a +inf element -> +inf (NaN stays NaN if any).
+        return if a.iter().any(|x| x.is_nan()) { f32::NAN } else { m };
+    }
+    let mut buf = [0f32; LSE_BLOCK];
+    let mut total = 0f64;
+    for chunk in a.chunks(LSE_BLOCK) {
+        let t = &mut buf[..chunk.len()];
+        for (o, &x) in t.iter_mut().zip(chunk) {
+            *o = x - m;
+        }
+        let mut e = [0f32; LSE_BLOCK];
+        exp(t, &mut e[..chunk.len()]);
+        total += sum(&e[..chunk.len()]) as f64;
+    }
+    (m as f64 + ln_f64(total)) as f32
+}

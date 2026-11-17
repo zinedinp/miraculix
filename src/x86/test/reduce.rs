@@ -137,3 +137,81 @@ fn compress_and_topk_match_reference_on_every_tier() {
         }
     }
 }
+
+fn close(got: f64, want: f64, rel: f64, what: &str) {
+    assert!((got - want).abs() <= rel * want.abs().max(1.0), "{what}: got {got}, want {want}");
+}
+
+#[test]
+fn affine_u16_matches_scalar_on_every_tier() {
+    let mut r = rng(11);
+    for t in tiers() {
+        for n in (0..70).chain([1000, 4099]) {
+            let q: Vec<u16> = (0..n).map(|_| r() as u16).collect();
+            let (a, b) = (3.0517578e-5f32, -1.25f32);
+            let mut out = vec![0f32; n];
+            affine_u16_f32_with(t, &q, a, b, &mut out);
+            for i in 0..n {
+                close(out[i] as f64, a as f64 * q[i] as f64 + b as f64, 2e-7, "affine");
+            }
+        }
+    }
+    // u16 extremes are exact integers.
+    let mut out = [0f32; 3];
+    affine_u16_f32(&[0, 1, 65535], 1.0, 0.0, &mut out);
+    assert_eq!(out, [0.0, 1.0, 65535.0]);
+}
+
+#[test]
+fn dot_matches_f64_on_every_tier() {
+    let mut r = rng(5);
+    for t in tiers() {
+        for n in (0..140).chain([1000, 4097]) {
+            let a: Vec<f32> = (0..n).map(|_| (r() % 2001) as f32 * 0.01 - 10.0).collect();
+            let b: Vec<f32> = (0..n).map(|_| (r() % 2001) as f32 * 0.01 - 10.0).collect();
+            let want: f64 = a.iter().zip(&b).map(|(&x, &y)| x as f64 * y as f64).sum();
+            let abs: f64 = a.iter().zip(&b).map(|(&x, &y)| (x as f64 * y as f64).abs()).sum();
+            let got = dot_f32_with(t, &a, &b) as f64;
+            assert!((got - want).abs() <= 1e-5 * abs.max(1.0), "{t:?} n={n}: {got} vs {want}");
+        }
+    }
+    assert!(dot_f32(&[1.0, f32::NAN], &[1.0, 1.0]).is_nan());
+}
+
+#[test]
+#[should_panic]
+fn dot_panics_on_length_mismatch() {
+    dot_f32(&[1.0], &[1.0, 2.0]);
+}
+
+#[test]
+fn logsumexp_and_log_softmax_match_f64_on_every_tier() {
+    let mut r = rng(9);
+    for t in tiers() {
+        for n in (1..70).chain([1000, 5000, 248_320]) {
+            let a: Vec<f32> = (0..n).map(|_| (r() % 4001) as f32 * 0.01 - 20.0).collect();
+            let m = a.iter().fold(f32::NEG_INFINITY, |x, &y| x.max(y)) as f64;
+            let want = m + a.iter().map(|&x| (x as f64 - m).exp()).sum::<f64>().ln();
+            let got = logsumexp_f32_with(t, &a) as f64;
+            assert!((got - want).abs() <= 2e-6 * want.abs().max(1.0), "{t:?} n={n}: {got} vs {want}");
+            let mut out = vec![0f32; n];
+            log_softmax_f32_with(t, &a, &mut out);
+            let p: f64 = out.iter().map(|&x| (x as f64).exp()).sum();
+            assert!((p - 1.0).abs() < 1e-5, "{t:?} n={n}: sum p = {p}");
+        }
+    }
+}
+
+#[test]
+fn logsumexp_edge_cases() {
+    assert_eq!(logsumexp_f32(&[]), f32::NEG_INFINITY);
+    assert_eq!(logsumexp_f32(&[f32::NEG_INFINITY; 5]), f32::NEG_INFINITY);
+    assert_eq!(logsumexp_f32(&[1.0, f32::INFINITY]), f32::INFINITY);
+    assert!(logsumexp_f32(&[1.0, f32::NAN, 2.0]).is_nan());
+    // large values do not overflow
+    let l = logsumexp_f32(&[1000.0, 1000.0]);
+    assert!((l - (1000.0 + core::f32::consts::LN_2)).abs() < 1e-3, "{l}");
+    // -inf elements contribute nothing
+    let l = logsumexp_f32(&[f32::NEG_INFINITY, 0.0]);
+    assert!(l.abs() < 1e-6, "{l}");
+}

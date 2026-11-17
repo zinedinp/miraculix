@@ -455,6 +455,197 @@ unsafe fn exp_avx2_fma(a: &[f32], out: &mut [f32]) -> usize {
     }
 }
 
+
+// affine u16, dot, logsumexp
+
+/// `out[i] = a * q[i] + b`, with `q[i]` read as an unsigned 16-bit integer
+/// (dequantising a `u16` log-prob or scale table). AVX-512F / AVX2 (`vpmovzxwd`
+/// + `vcvtdq2ps` + multiply-add) or scalar. The FMA tiers round once, the
+/// others twice, so results can differ in the last bit between tiers.
+///
+/// # Panics
+/// If `q.len() != out.len()`.
+pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+    affine_u16_f32_with(best_tier(), q, a, b, out)
+}
+
+#[doc(hidden)]
+pub fn affine_u16_f32_with(tier: Tier, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+    assert_eq!(q.len(), out.len());
+    let done = match tier {
+        // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
+        Tier::Avx512 => unsafe { affine_avx512(q, a, b, out) },
+        Tier::Avx2Fma => unsafe { affine_avx2_fma(q, a, b, out) },
+        Tier::Avx2 => unsafe { affine_avx2(q, a, b, out) },
+        Tier::Scalar => 0,
+    };
+    for i in done..q.len() {
+        out[i] = a * (q[i] as f32) + b;
+    }
+}
+
+#[target_feature(enable = "avx512f")]
+unsafe fn affine_avx512(q: &[u16], a: f32, b: f32, out: &mut [f32]) -> usize {
+    let mut i = 0;
+    unsafe {
+        let (va, vb) = (_mm512_set1_ps(a), _mm512_set1_ps(b));
+        while i + 16 <= q.len() {
+            let v = _mm512_cvtepu16_epi32(_mm256_loadu_si256(q.as_ptr().add(i) as *const __m256i));
+            let r = _mm512_fmadd_ps(_mm512_cvtepi32_ps(v), va, vb);
+            _mm512_storeu_ps(out.as_mut_ptr().add(i), r);
+            i += 16;
+        }
+    }
+    i
+}
+
+#[target_feature(enable = "avx2,fma")]
+unsafe fn affine_avx2_fma(q: &[u16], a: f32, b: f32, out: &mut [f32]) -> usize {
+    let mut i = 0;
+    unsafe {
+        let (va, vb) = (_mm256_set1_ps(a), _mm256_set1_ps(b));
+        while i + 8 <= q.len() {
+            let v = _mm256_cvtepu16_epi32(_mm_loadu_si128(q.as_ptr().add(i) as *const __m128i));
+            _mm256_storeu_ps(out.as_mut_ptr().add(i), _mm256_fmadd_ps(_mm256_cvtepi32_ps(v), va, vb));
+            i += 8;
+        }
+    }
+    i
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn affine_avx2(q: &[u16], a: f32, b: f32, out: &mut [f32]) -> usize {
+    let mut i = 0;
+    unsafe {
+        let (va, vb) = (_mm256_set1_ps(a), _mm256_set1_ps(b));
+        while i + 8 <= q.len() {
+            let v = _mm256_cvtepu16_epi32(_mm_loadu_si128(q.as_ptr().add(i) as *const __m128i));
+            let r = _mm256_add_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(v), va), vb);
+            _mm256_storeu_ps(out.as_mut_ptr().add(i), r);
+            i += 8;
+        }
+    }
+    i
+}
+
+/// Dot product `sum(a[i] * b[i])`. Four vector accumulators of fused
+/// multiply-adds on AVX-512F and AVX2+FMA (AVX2 alone multiplies then adds);
+/// the order depends on the tier, so the last bits differ between CPUs, and
+/// the scalar tail and the scalar tier round the product separately. NaN and
+/// inf propagate.
+///
+/// # Panics
+/// If `a.len() != b.len()`.
+pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    dot_f32_with(best_tier(), a, b)
+}
+
+#[doc(hidden)]
+pub fn dot_f32_with(tier: Tier, a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len());
+    let (mut s, done) = match tier {
+        // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
+        Tier::Avx512 => unsafe { dot_avx512(a, b) },
+        Tier::Avx2Fma => unsafe { dot_avx2_fma(a, b) },
+        Tier::Avx2 => unsafe { dot_avx2(a, b) },
+        Tier::Scalar => (0.0, 0),
+    };
+    let mut lanes = [0f32; 4];
+    for i in done..a.len() {
+        lanes[i % 4] += a[i] * b[i];
+    }
+    s += (lanes[0] + lanes[1]) + (lanes[2] + lanes[3]);
+    s
+}
+
+#[target_feature(enable = "avx512f")]
+unsafe fn dot_avx512(a: &[f32], b: &[f32]) -> (f32, usize) {
+    unsafe {
+        let mut acc = [_mm512_setzero_ps(); 4];
+        let mut i = 0;
+        while i + 64 <= a.len() {
+            for (k, ac) in acc.iter_mut().enumerate() {
+                let o = i + 16 * k;
+                *ac = _mm512_fmadd_ps(_mm512_loadu_ps(a.as_ptr().add(o)), _mm512_loadu_ps(b.as_ptr().add(o)), *ac);
+            }
+            i += 64;
+        }
+        while i + 16 <= a.len() {
+            acc[0] = _mm512_fmadd_ps(_mm512_loadu_ps(a.as_ptr().add(i)), _mm512_loadu_ps(b.as_ptr().add(i)), acc[0]);
+            i += 16;
+        }
+        let t = _mm512_add_ps(_mm512_add_ps(acc[0], acc[1]), _mm512_add_ps(acc[2], acc[3]));
+        (_mm512_reduce_add_ps(t), i)
+    }
+}
+
+macro_rules! dot_avx2_kernel {
+    ($name:ident, $feat:literal, $mac:expr) => {
+        #[target_feature(enable = $feat)]
+        unsafe fn $name(a: &[f32], b: &[f32]) -> (f32, usize) {
+            unsafe {
+                let mac = $mac;
+                let mut acc = [_mm256_setzero_ps(); 4];
+                let mut i = 0;
+                while i + 32 <= a.len() {
+                    for (k, ac) in acc.iter_mut().enumerate() {
+                        let o = i + 8 * k;
+                        *ac = mac(_mm256_loadu_ps(a.as_ptr().add(o)), _mm256_loadu_ps(b.as_ptr().add(o)), *ac);
+                    }
+                    i += 32;
+                }
+                while i + 8 <= a.len() {
+                    acc[0] = mac(_mm256_loadu_ps(a.as_ptr().add(i)), _mm256_loadu_ps(b.as_ptr().add(i)), acc[0]);
+                    i += 8;
+                }
+                let t = _mm256_add_ps(_mm256_add_ps(acc[0], acc[1]), _mm256_add_ps(acc[2], acc[3]));
+                let h = _mm_add_ps(_mm256_castps256_ps128(t), _mm256_extractf128_ps::<1>(t));
+                let h = _mm_add_ps(h, _mm_movehl_ps(h, h));
+                let h = _mm_add_ss(h, _mm_shuffle_ps::<1>(h, h));
+                (_mm_cvtss_f32(h), i)
+            }
+        }
+    };
+}
+dot_avx2_kernel!(dot_avx2_fma, "avx2,fma", |x, y, z| _mm256_fmadd_ps(x, y, z));
+dot_avx2_kernel!(dot_avx2, "avx2", |x, y, z| _mm256_add_ps(_mm256_mul_ps(x, y), z));
+
+/// `ln(sum(exp(a[i])))` without overflow (shifted by the maximum), built from
+/// [`reduce_max_f32`], [`exp_f32`] (error <= 3e-7) and [`reduce_sum_f32`]
+/// (blocks of 1024 added in `f64`; the final `ln` is exact to `f32`).
+/// NaN elements are ignored by the maximum but make the result NaN; an empty
+/// slice or all `-inf` gives `-inf`; a `+inf` element gives `+inf`.
+pub fn logsumexp_f32(a: &[f32]) -> f32 {
+    logsumexp_f32_with(best_tier(), a)
+}
+
+#[doc(hidden)]
+pub fn logsumexp_f32_with(tier: Tier, a: &[f32]) -> f32 {
+    crate::reduce_common::logsumexp_with(
+        a,
+        |x| reduce_max_f32_with(tier, x),
+        |x, o| exp_f32_with(tier, x, o),
+        |x| reduce_sum_f32_with(tier, x),
+    )
+}
+
+/// `out[i] = a[i] - logsumexp_f32(a)`: log-softmax over the whole slice.
+///
+/// # Panics
+/// If `a.len() != out.len()`.
+pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
+    log_softmax_f32_with(best_tier(), a, out)
+}
+
+#[doc(hidden)]
+pub fn log_softmax_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
+    assert_eq!(a.len(), out.len());
+    let l = logsumexp_f32_with(tier, a);
+    for (o, &x) in out.iter_mut().zip(a) {
+        *o = x - l;
+    }
+}
+
 // ------------------------------------------------------- compress / top-k
 
 /// Writes the indices of all `a[i] > threshold` to `out`, ascending, and

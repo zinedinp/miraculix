@@ -252,6 +252,117 @@ unsafe fn exp_neon(a: &[f32], out: &mut [f32]) -> usize {
     }
 }
 
+// ------------------------------------------------- affine u16, dot, logsumexp
+
+/// `out[i] = a * q[i] + b` with `q[i]` an unsigned 16-bit integer. Neon
+/// (`uxtl` + `ucvtf` + `fmla`, one rounding) or scalar (two roundings), so the
+/// last bit can differ between the two.
+///
+/// # Panics
+/// If `q.len() != out.len()`.
+pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+    affine_u16_f32_with(hw(), q, a, b, out)
+}
+
+#[doc(hidden)]
+pub fn affine_u16_f32_with(neon: bool, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+    assert_eq!(q.len(), out.len());
+    // SAFETY: see `bf16_to_f32_with`.
+    let done = if neon { unsafe { affine_neon(q, a, b, out) } } else { 0 };
+    for i in done..q.len() {
+        out[i] = a * (q[i] as f32) + b;
+    }
+}
+
+#[target_feature(enable = "neon")]
+unsafe fn affine_neon(q: &[u16], a: f32, b: f32, out: &mut [f32]) -> usize {
+    let mut i = 0;
+    unsafe {
+        let (va, vb) = (vdupq_n_f32(a), vdupq_n_f32(b));
+        while i + 8 <= q.len() {
+            let v = vld1q_u16(q.as_ptr().add(i));
+            let lo = vcvtq_f32_u32(vmovl_u16(vget_low_u16(v)));
+            let hi = vcvtq_f32_u32(vmovl_high_u16(v));
+            vst1q_f32(out.as_mut_ptr().add(i), vfmaq_f32(vb, lo, va));
+            vst1q_f32(out.as_mut_ptr().add(i + 4), vfmaq_f32(vb, hi, va));
+            i += 8;
+        }
+    }
+    i
+}
+
+/// Dot product `sum(a[i] * b[i])` (four `fmla` accumulators on Neon; lane
+/// order, so the last bits differ from a sequential sum). NaN and inf propagate.
+///
+/// # Panics
+/// If `a.len() != b.len()`.
+pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    dot_f32_with(hw(), a, b)
+}
+
+#[doc(hidden)]
+pub fn dot_f32_with(neon: bool, a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len());
+    // SAFETY: see `bf16_to_f32_with`.
+    let (mut s, done) = if neon { unsafe { dot_neon(a, b) } } else { (0.0, 0) };
+    let mut lanes = [0f32; 4];
+    for i in done..a.len() {
+        lanes[i % 4] += a[i] * b[i];
+    }
+    s += (lanes[0] + lanes[1]) + (lanes[2] + lanes[3]);
+    s
+}
+
+#[target_feature(enable = "neon")]
+unsafe fn dot_neon(a: &[f32], b: &[f32]) -> (f32, usize) {
+    unsafe {
+        let mut acc = [vdupq_n_f32(0.0); 4];
+        let mut i = 0;
+        while i + 16 <= a.len() {
+            for (k, ac) in acc.iter_mut().enumerate() {
+                let o = i + 4 * k;
+                *ac = vfmaq_f32(*ac, vld1q_f32(a.as_ptr().add(o)), vld1q_f32(b.as_ptr().add(o)));
+            }
+            i += 16;
+        }
+        while i + 4 <= a.len() {
+            acc[0] = vfmaq_f32(acc[0], vld1q_f32(a.as_ptr().add(i)), vld1q_f32(b.as_ptr().add(i)));
+            i += 4;
+        }
+        let t = vaddq_f32(vaddq_f32(acc[0], acc[1]), vaddq_f32(acc[2], acc[3]));
+        (vaddvq_f32(t), i)
+    }
+}
+
+/// `ln(sum(exp(a[i])))` without overflow; same contract as
+/// `x86::reduce::logsumexp_f32` (max ignores NaN, NaN makes the result NaN,
+/// empty or all `-inf` gives `-inf`, `+inf` gives `+inf`).
+pub fn logsumexp_f32(a: &[f32]) -> f32 {
+    logsumexp_f32_with(hw(), a)
+}
+
+#[doc(hidden)]
+pub fn logsumexp_f32_with(neon: bool, a: &[f32]) -> f32 {
+    crate::reduce_common::logsumexp_with(
+        a,
+        |x| reduce_max_f32_with(neon, x),
+        |x, o| exp_f32_with(neon, x, o),
+        |x| reduce_sum_f32_with(neon, x),
+    )
+}
+
+/// `out[i] = a[i] - logsumexp_f32(a)`.
+///
+/// # Panics
+/// If `a.len() != out.len()`.
+pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
+    assert_eq!(a.len(), out.len());
+    let l = logsumexp_f32(a);
+    for (o, &x) in out.iter_mut().zip(a) {
+        *o = x - l;
+    }
+}
+
 // ------------------------------------------------------- compress / top-k
 
 /// Writes the indices of all `a[i] > threshold` to `out`, ascending, and
