@@ -183,3 +183,18 @@ pub fn bf16_to_f32(a: &[u16], out: &mut [f32]) {
         out[i] = f32::from_bits((a[i] as u32) << 16);
     }
 }
+
+/// `out[i] = exp(a[i])`, an approximation (relative error <= 3e-7, see
+/// `x86::reduce::exp_f32`). RVV when present, portable scalar otherwise.
+///
+/// # Panics
+/// If the lengths differ.
+pub fn exp_f32(a: &[f32], out: &mut [f32]) {
+    if let Some(t) = rvv() {
+        return t.exp_f32(a, out);
+    }
+    assert_eq!(a.len(), out.len());
+    for i in 0..a.len() {
+        out[i] = crate::reduce_common::exp_scalar(a[i]);
+    }
+}

@@ -89,6 +89,7 @@ pub extern "C" fn _start() -> ! {
     }));
     rvv_checks();
     extra_checks();
+    exp_and_bfp_checks();
     // exit status is 8 bits: report the first failing check id + 1 (0 = all passed)
     let f = unsafe { FAIL };
     exit(if f == 0 { 0 } else { f.trailing_zeros() as u64 + 1 })
@@ -251,4 +252,90 @@ fn bfp_word(st: &mut u64, row: u32) -> u32 {
     let base = 120 + row % 20;
     let e = base + ((u >> 40) % 10) as u32 - 5;
     (((u >> 63) as u32) << 31) | (e << 23) | ((u >> 8) as u32 & 0x7F_FFFF)
+}
+
+fn exp_and_bfp_checks() {
+    use miraculix::formats::bfp::{BfpElem, bfp_encode_rows_bf16, bfp_encode_rows_bf16_scalar, bfp_encode_rows_scalar};
+    use miraculix::riscv::auto;
+    // exp against known values (f64 reference computed offline), several lengths for the tail
+    let known: [(f32, f32); 12] = [
+        (0.0, 1.0),
+        (0.5, 1.648_721_3),
+        (1.0, core::f32::consts::E),
+        (-1.0, 0.367_879_44),
+        (2.0, 7.389_056),
+        (-5.0, 0.006_737_947),
+        (20.0, 485_165_200.0),
+        (-20.0, 2.061_153_6e-9),
+        (50.0, 5.184_705_5e21),
+        (-50.0, 1.928_749_8e-22),
+        (80.0, 5.540_622_4e34),
+        (88.0, 1.651_636_3e38),
+    ];
+    let mut ok = true;
+    for n in [1usize, 5, 12, 29, 64] {
+        let xs: [f32; 64] = core::array::from_fn(|i| known[i % 12].0);
+        let mut ys = [0f32; 64];
+        auto::exp_f32(&xs[..n], &mut ys[..n]);
+        for i in 0..n {
+            let want = known[i % 12].1;
+            ok &= (ys[i] - want).abs() <= want * 3e-7;
+        }
+    }
+    check(40, ok);
+    let sp = [-100.0f32, -87.4, 100.0, 88.8, f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -0.0];
+    let mut so = [1f32; 9];
+    auto::exp_f32(&sp, &mut so);
+    check(41, so[0] == 0.0 && so[1] == 0.0 && so[2] == f32::INFINITY && so[3] == f32::INFINITY);
+    check(42, so[4].is_nan() && so[5] == f32::INFINITY && so[6] == 0.0 && so[7] == 1.0 && so[8] == 1.0);
+    // exp(x) * exp(-x) == 1 over a sweep (catches range-reduction slips anywhere in the range)
+    let xs: [f32; 200] = core::array::from_fn(|i| (i as f32 - 100.0) * 0.8);
+    let neg: [f32; 200] = core::array::from_fn(|i| -xs[i]);
+    let (mut a, mut b) = ([0f32; 200], [0f32; 200]);
+    auto::exp_f32(&xs, &mut a);
+    auto::exp_f32(&neg, &mut b);
+    check(43, (0..200).all(|i| xs[i].abs() > 80.0 || (a[i] * b[i] - 1.0).abs() < 1e-6));
+
+    // BFP: vector kernels (via the public dispatch) against the portable encoder and the oracle
+    let mut st = 0x9E37_79B9_7F4A_7C15u64;
+    let mut f32s = [0f32; 16 * 40];
+    let mut bf = [0u16; 16 * 40];
+    for row in 0..40u32 {
+        for j in 0..16 {
+            let w = bfp_word(&mut st, row * 97);
+            f32s[row as usize * 16 + j] = f32::from_bits(w);
+            bf[row as usize * 16 + j] = (w >> 16) as u16;
+        }
+    }
+    for (elem, id) in [(BfpElem::M7, 44), (BfpElem::M3, 45), (BfpElem::M1, 46)] {
+        let rb = elem.row_bytes();
+        let (mut e1, mut d1, mut e2, mut d2) = ([0u8; 40], [0u8; 40 * 16], [0u8; 40], [0u8; 40 * 16]);
+        miraculix::formats::bfp::bfp_encode_rows(elem, &f32s, &mut e1, &mut d1[..40 * rb]);
+        bfp_encode_rows_scalar(elem, &f32s, &mut e2, &mut d2[..40 * rb]);
+        let same_f32 = e1 == e2 && d1[..40 * rb] == d2[..40 * rb];
+        let (mut e3, mut d3, mut e4, mut d4) = ([0u8; 40], [0u8; 40 * 16], [0u8; 40], [0u8; 40 * 16]);
+        bfp_encode_rows_bf16(elem, &bf, &mut e3, &mut d3[..40 * rb]);
+        bfp_encode_rows_bf16_scalar(elem, &bf, &mut e4, &mut d4[..40 * rb]);
+        check(id, same_f32 && e3 == e4 && d3[..40 * rb] == d4[..40 * rb]);
+    }
+    // bf16 oracle hashes (scripts/tt-oracle), through the dispatching encoder
+    for (elem, want) in [
+        (BfpElem::M7, 0xf36a025efdf7cfe7u64),
+        (BfpElem::M3, 0xdf714a5662d559f4),
+        (BfpElem::M1, 0x3f456ba7344920d1),
+    ] {
+        let mut st = 0x9E37_79B9_7F4A_7C15u64;
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for row in 0..5000u32 {
+            let src: [u16; 16] = core::array::from_fn(|_| (bfp_word(&mut st, row) >> 16) as u16);
+            let (mut e, mut d) = ([0u8; 1], [0u8; 16]);
+            let rb = elem.row_bytes();
+            bfp_encode_rows_bf16(elem, &src, &mut e, &mut d[..rb]);
+            for &b in core::iter::once(&e[0]).chain(&d[..rb]) {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x100_0000_01b3);
+            }
+        }
+        check(47 + (7 - elem.mantissa_bits()) / 2, h == want);
+    }
 }

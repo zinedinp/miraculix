@@ -18,7 +18,8 @@
 //!
 //! Decoding gives `sign * magnitude * 2^(shared - 127 - (BITS - 1))`.
 //!
-//! On x86 with AVX-512 (F, BW, VL) encoding does one row per `zmm`.
+//! On x86_64 with AVX-512 (F, BW, VL) encoding does one row per `zmm`; on RISC-V
+//! with `V`, one row per vector loop trip (`Rvv::bfp_encode_rows`).
 
 use super::minifloat::pow2;
 
@@ -207,6 +208,10 @@ pub fn bfp_encode_rows(elem: BfpElem, src: &[f32], exps: &mut [u8], data: &mut [
     if encode_x86::<f32, false>(elem, src, exps, data) {
         return;
     }
+    #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+    if let Some(t) = crate::riscv::ops::rvv::Rvv::detect() {
+        return t.bfp_encode_rows(elem, src, exps, data);
+    }
     encode_scalar_dispatch(elem, src, exps, data, load_f32);
 }
 
@@ -219,6 +224,10 @@ pub fn bfp_encode_rows_bf16(elem: BfpElem, src: &[u16], exps: &mut [u8], data: &
     #[cfg(target_arch = "x86_64")]
     if encode_x86::<u16, true>(elem, src, exps, data) {
         return;
+    }
+    #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+    if let Some(t) = crate::riscv::ops::rvv::Rvv::detect() {
+        return t.bfp_encode_rows_bf16(elem, src, exps, data);
     }
     encode_scalar_dispatch(elem, src, exps, data, load_bf16);
 }

@@ -473,11 +473,11 @@ lowest index.
 FP8 / FP6 / FP4 / FP16 / BF16 (`MiniFloat`), OCP MX and NVFP4 (`mx`, block size
 is a parameter via `*_block`), packed INT1/2/4 (`int`), TF32, Tenstorrent
 `BFP_B` (`bfp`: `Bfp8_b`/`Bfp4_b`/`Bfp2_b`, checked bit for bit against
-tt-metal with `scripts/tt-oracle`, AVX-512 fast path) and GGUF `Q8_0` / `Q6_K`
+tt-metal with `scripts/tt-oracle`, AVX-512 and RVV fast paths) and GGUF `Q8_0` / `Q6_K`
 decode (`gguf`, checked against ggml with `scripts/gguf-oracle`).
 
 **RISC-V.** `riscv::ops::rvv::Rvv` (elementwise f32/i32, FMA, reductions,
-compare/compress, `i8` dot product), `Zvfh`, `Zvfbfmin`, `Zvfbfwma`, all
+compare/compress, `exp`, BFP_B row encoding, `i8` dot product), `Zvfh`, `Zvfbfmin`, `Zvfbfwma`, all
 `asm!` loops that work for any VLEN, plus `riscv::auto` dispatch.
 `riscv::class::RiscvClass::detect()` reports `VectorAccelerator` for a
 SiFive-vendor core with `V` and VLEN >= 512 (the X280 shape in the Tenstorrent

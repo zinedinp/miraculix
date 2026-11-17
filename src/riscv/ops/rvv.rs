@@ -11,6 +11,8 @@
 use core::arch::asm;
 
 use super::super::{Feature, FeatureSet};
+use crate::formats::bfp::{BFP_ROW, BfpElem};
+use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P};
 
 /// Proof that the `V` extension is available. Zero-sized, `Copy`.
 #[derive(Debug, Clone, Copy)]
@@ -362,5 +364,242 @@ impl Rvv {
         }
         let _ = (pa, pb, n);
         r as i32
+    }
+}
+
+impl Rvv {
+    /// `out[i] = exp(a[i])`, an approximation. Same algorithm, constants and
+    /// contract as `x86::reduce::exp_f32`: relative error <= 3e-7 for inputs in
+    /// `[-87.3, 88.7]`, `0` below `-87.33655`, `+inf` above `88.72283`, NaN
+    /// stays NaN. The polynomial is fused (`vfmadd`/`vfnmsac`), so the last bit
+    /// can differ from the portable scalar path.
+    ///
+    /// # Panics
+    /// If `a.len() != out.len()`.
+    pub fn exp_f32(self, a: &[f32], out: &mut [f32]) {
+        assert_eq!(a.len(), out.len());
+        let (mut pa, mut po, mut n) = (a.as_ptr(), out.as_mut_ptr(), a.len());
+        if n == 0 {
+            return;
+        }
+        // SAFETY: token proves V; reads and writes `n` f32. Note the rounding:
+        // `vfcvt.x.f.v` uses `frm` (nearest even by default, as `asm!` code
+        // must assume the ABI default).
+        unsafe {
+            rvv_asm!(
+                ".option push",
+                ".option arch, +v",
+                "2:",
+                "vsetvli {vl}, {n}, e32, m2, ta, ma",
+                "vle32.v v8, ({a})",
+                "vfmax.vf v10, v8, {lo}",
+                "vfmin.vf v10, v10, {hi}",
+                "vfmul.vf v12, v10, {log2e}",
+                "vfcvt.x.f.v v12, v12",
+                "vfcvt.f.x.v v14, v12",
+                "vmv.v.v v16, v10",
+                "vfnmsac.vf v16, {ln2hi}, v14",
+                "vfnmsac.vf v16, {ln2lo}, v14",
+                "vfmv.v.f v18, {p0}",
+                "vfmv.v.f v20, {p1}",
+                "vfmadd.vv v18, v16, v20",
+                "vfmv.v.f v20, {p2}",
+                "vfmadd.vv v18, v16, v20",
+                "vfmv.v.f v20, {p3}",
+                "vfmadd.vv v18, v16, v20",
+                "vfmv.v.f v20, {p4}",
+                "vfmadd.vv v18, v16, v20",
+                "vfmv.v.f v20, {p5}",
+                "vfmadd.vv v18, v16, v20",
+                "vfmul.vv v22, v16, v16",
+                "vfadd.vf v20, v16, {one}",
+                "vfmacc.vv v20, v18, v22",
+                "vsra.vi v24, v12, 1",
+                "vsub.vv v26, v12, v24",
+                "li {t}, 127",
+                "vadd.vx v24, v24, {t}",
+                "vadd.vx v26, v26, {t}",
+                "vsll.vi v24, v24, 23",
+                "vsll.vi v26, v26, 23",
+                "vfmul.vv v20, v20, v24",
+                "vfmul.vv v20, v20, v26",
+                "vmflt.vf v0, v8, {lo}",
+                "vmerge.vim v20, v20, 0, v0",
+                "vmfgt.vf v0, v8, {hi}",
+                "vfmerge.vfm v20, v20, {inf}, v0",
+                "vmfne.vv v0, v8, v8",
+                "vmerge.vvm v20, v20, v8, v0",
+                "vse32.v v20, ({o})",
+                "sub {n}, {n}, {vl}",
+                "slli {t}, {vl}, 2",
+                "add {a}, {a}, {t}",
+                "add {o}, {o}, {t}",
+                "bnez {n}, 2b",
+                ".option pop",
+                a = inout(reg) pa, o = inout(reg) po, n = inout(reg) n, vl = out(reg) _, t = out(reg) _,
+                lo = in(freg) EXP_LO, hi = in(freg) EXP_HI, log2e = in(freg) LOG2E,
+                ln2hi = in(freg) LN2_HI, ln2lo = in(freg) LN2_LO, one = in(freg) 1.0f32,
+                inf = in(freg) f32::INFINITY,
+                p0 = in(freg) P[0], p1 = in(freg) P[1], p2 = in(freg) P[2],
+                p3 = in(freg) P[3], p4 = in(freg) P[4], p5 = in(freg) P[5]
+            );
+        }
+        let _ = (pa, po, n);
+    }
+}
+
+/// One BFP_B row (16 values) per call. `LOAD` leaves the 16 `f32` bit patterns
+/// in `v8` (e32, m4, vl 16). The rest follows `bfp_simd::row_scalar` step for
+/// step; `PACK` narrows the codes in `v24` and stores `row_bytes` bytes.
+macro_rules! bfp_row {
+    ($name:ident, $load:expr, $bits:literal, $shift:literal, $rnd:literal, $limit:literal, $pack:expr) => {
+        /// # Safety
+        /// `V` available; `s` has 16 source values, `e` one byte, `o` the row's data bytes.
+        unsafe fn $name(s: *const u8, e: *mut u8, o: *mut u8) {
+            unsafe {
+                rvv_asm!(
+                    ".option push",
+                    ".option arch, +v",
+                    $load,
+                    "vsrl.vi v12, v8, 23",
+                    "li {t}, 255",
+                    "vand.vx v12, v12, {t}",
+                    "vmv.s.x v24, zero",
+                    "vredmaxu.vs v24, v12, v24",
+                    "vmv.x.s {sh}, v24",
+                    "sb {sh}, 0({e})",
+                    "vrsub.vx v16, v12, {sh}",
+                    "li {t}, 31",
+                    "vminu.vx v16, v16, {t}",
+                    "li {t}, 0x7fffff",
+                    "vand.vx v20, v8, {t}",
+                    "li {t}, 0x800000",
+                    "vor.vx v20, v20, {t}",
+                    "vsrl.vv v20, v20, v16",
+                    concat!("li {t}, ", $shift),
+                    "vsrl.vx v28, v20, {t}",
+                    "vand.vi v28, v28, 1",
+                    "vadd.vv v20, v20, v28",
+                    concat!("li {t}, ", $rnd),
+                    "vadd.vx v20, v20, {t}",
+                    concat!("li {t}, ", $shift),
+                    "vsrl.vx v20, v20, {t}",
+                    concat!("li {t}, ", $limit),
+                    "vminu.vx v20, v20, {t}",
+                    "vmsne.vi v0, v12, 0",
+                    "vmsne.vi v1, v20, 0",
+                    "vmand.mm v0, v0, v1",
+                    "vsrl.vi v28, v8, 31",
+                    concat!("li {t}, ", $bits),
+                    "vsll.vx v28, v28, {t}",
+                    "vor.vv v20, v20, v28",
+                    "vmv.v.i v24, 0",
+                    "vmerge.vvm v24, v24, v20, v0",
+                    $pack,
+                    ".option pop",
+                    s = in(reg) s, e = in(reg) e, o = in(reg) o, t = out(reg) _, sh = out(reg) _
+                );
+            }
+        }
+    };
+}
+
+macro_rules! load_f32 {
+    () => {
+        "vsetivli zero, 16, e32, m4, ta, ma\nvle32.v v8, ({s})"
+    };
+}
+macro_rules! load_bf16 {
+    () => {
+        "vsetivli zero, 16, e16, m2, ta, ma\nvle16.v v16, ({s})\nvsetivli zero, 16, e32, m4, ta, ma\nvzext.vf2 v8, v16\nvsll.vi v8, v8, 16"
+    };
+}
+// Narrow the 16 codes in v24 (e32) to 16 bytes in v12.
+macro_rules! narrow_to_bytes {
+    () => {
+        "vsetivli zero, 16, e16, m2, ta, ma\nvnsrl.wi v16, v24, 0\nvsetivli zero, 16, e8, m1, ta, ma\nvnsrl.wi v12, v16, 0\n"
+    };
+}
+macro_rules! pack7 {
+    () => {
+        concat!(narrow_to_bytes!(), "vse8.v v12, ({o})")
+    };
+}
+macro_rules! pack3 {
+    () => {
+        concat!(
+            narrow_to_bytes!(),
+            "vsetivli zero, 8, e16, m1, ta, ma\nli {t}, 15\nvand.vx v14, v12, {t}\nvsrl.vi v15, v12, 4\n",
+            "li {t}, 240\nvand.vx v15, v15, {t}\nvor.vv v14, v14, v15\n",
+            "vsetivli zero, 8, e8, mf2, ta, ma\nvnsrl.wi v16, v14, 0\nvse8.v v16, ({o})"
+        )
+    };
+}
+macro_rules! pack1 {
+    () => {
+        concat!(
+            narrow_to_bytes!(),
+            "vsetivli zero, 4, e32, m1, ta, ma\nvand.vi v14, v12, 3\n",
+            "li {t}, 12\nvsrl.vi v15, v12, 6\nvand.vx v15, v15, {t}\n",
+            "li {t}, 48\nvsrl.vi v16, v12, 12\nvand.vx v16, v16, {t}\n",
+            "li {t}, 192\nvsrl.vi v17, v12, 18\nvand.vx v17, v17, {t}\n",
+            "vor.vv v14, v14, v15\nvor.vv v16, v16, v17\nvor.vv v14, v14, v16\n",
+            "vsetivli zero, 4, e16, mf2, ta, ma\nvnsrl.wi v18, v14, 0\n",
+            "vsetivli zero, 4, e8, mf4, ta, ma\nvnsrl.wi v19, v18, 0\nvse8.v v19, ({o})"
+        )
+    };
+}
+
+bfp_row!(row_m7_f32, load_f32!(), "7", "17", "65535", "127", pack7!());
+bfp_row!(row_m3_f32, load_f32!(), "3", "21", "1048575", "7", pack3!());
+bfp_row!(row_m1_f32, load_f32!(), "1", "23", "4194303", "1", pack1!());
+bfp_row!(row_m7_bf16, load_bf16!(), "7", "17", "65535", "127", pack7!());
+bfp_row!(row_m3_bf16, load_bf16!(), "3", "21", "1048575", "7", pack3!());
+bfp_row!(row_m1_bf16, load_bf16!(), "1", "23", "4194303", "1", pack1!());
+
+impl Rvv {
+    /// Encodes `f32` rows as Tenstorrent `BFP_B` (see [`crate::formats::bfp`]);
+    /// bit-exact with the portable encoder. One row (16 values) per loop trip.
+    ///
+    /// # Panics
+    /// If `src.len()` is not a multiple of 16, or `exps` / `data` have the wrong length.
+    pub fn bfp_encode_rows(self, elem: BfpElem, src: &[f32], exps: &mut [u8], data: &mut [u8]) {
+        let rb = elem.row_bytes();
+        assert_eq!(src.len() % BFP_ROW, 0);
+        assert!(exps.len() == src.len() / BFP_ROW && data.len() == exps.len() * rb);
+        for (r, e) in exps.iter_mut().enumerate() {
+            let s = src[r * BFP_ROW..][..BFP_ROW].as_ptr() as *const u8;
+            let d = data[r * rb..][..rb].as_mut_ptr();
+            // SAFETY: token proves V; `s` has 16 `f32`, `d` has `rb` bytes.
+            unsafe {
+                match elem {
+                    BfpElem::M7 => row_m7_f32(s, e, d),
+                    BfpElem::M3 => row_m3_f32(s, e, d),
+                    BfpElem::M1 => row_m1_f32(s, e, d),
+                }
+            }
+        }
+    }
+
+    /// [`Self::bfp_encode_rows`] for bfloat16 input (`u16` bit patterns).
+    ///
+    /// # Panics
+    /// If `src.len()` is not a multiple of 16, or `exps` / `data` have the wrong length.
+    pub fn bfp_encode_rows_bf16(self, elem: BfpElem, src: &[u16], exps: &mut [u8], data: &mut [u8]) {
+        let rb = elem.row_bytes();
+        assert_eq!(src.len() % BFP_ROW, 0);
+        assert!(exps.len() == src.len() / BFP_ROW && data.len() == exps.len() * rb);
+        for (r, e) in exps.iter_mut().enumerate() {
+            let s = src[r * BFP_ROW..][..BFP_ROW].as_ptr() as *const u8;
+            let d = data[r * rb..][..rb].as_mut_ptr();
+            // SAFETY: token proves V; `s` has 16 `u16`, `d` has `rb` bytes.
+            unsafe {
+                match elem {
+                    BfpElem::M7 => row_m7_bf16(s, e, d),
+                    BfpElem::M3 => row_m3_bf16(s, e, d),
+                    BfpElem::M1 => row_m1_bf16(s, e, d),
+                }
+            }
+        }
     }
 }
