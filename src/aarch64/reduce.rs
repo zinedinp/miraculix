@@ -363,6 +363,61 @@ pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
     }
 }
 
+// ------------------------------------------------------- GEMM micro-kernel
+
+pub use crate::reduce_common::{GEMM_MR, GEMM_NR};
+
+/// GEMM micro-kernel, same contract as `x86::reduce::gemm_f32_kernel`:
+/// `acc[i][j] += sum_k a[k*MR + i] * b[k*NR + j]`, k ascending. Neon: four
+/// passes of 8 rows × 8 columns (16 q accumulators, `vfmaq`, one rounding per
+/// step); the scalar tier rounds twice.
+///
+/// # Panics
+/// If `a.len() < kc * GEMM_MR` or `b.len() < kc * GEMM_NR`.
+pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    gemm_f32_kernel_with(hw(), kc, a, b, acc)
+}
+
+#[doc(hidden)]
+pub fn gemm_f32_kernel_with(neon: bool, kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    crate::reduce_common::gemm_check(kc, a, b);
+    if neon {
+        // SAFETY: Neon detected; lengths checked above.
+        unsafe { gemm_kernel_neon(kc, a.as_ptr(), b.as_ptr(), acc) }
+    } else {
+        crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc)
+    }
+}
+
+/// # Safety
+/// Neon present; `a`/`b` valid for `kc*MR` / `kc*NR` floats.
+#[target_feature(enable = "neon")]
+unsafe fn gemm_kernel_neon(kc: usize, a: *const f32, b: *const f32, acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    unsafe {
+        for c0 in [0usize, 8, 16, 24] {
+            let mut c = [[vdupq_n_f32(0.0); 2]; GEMM_MR];
+            for (ci, row) in c.iter_mut().zip(acc.iter()) {
+                ci[0] = vld1q_f32(row.as_ptr().add(c0));
+                ci[1] = vld1q_f32(row.as_ptr().add(c0 + 4));
+            }
+            for k in 0..kc {
+                let bk = b.add(k * GEMM_NR + c0);
+                let (b0, b1) = (vld1q_f32(bk), vld1q_f32(bk.add(4)));
+                let ak = a.add(k * GEMM_MR);
+                for (i, ci) in c.iter_mut().enumerate() {
+                    let ai = *ak.add(i);
+                    ci[0] = vfmaq_n_f32(ci[0], b0, ai);
+                    ci[1] = vfmaq_n_f32(ci[1], b1, ai);
+                }
+            }
+            for (ci, row) in c.iter().zip(acc.iter_mut()) {
+                vst1q_f32(row.as_mut_ptr().add(c0), ci[0]);
+                vst1q_f32(row.as_mut_ptr().add(c0 + 4), ci[1]);
+            }
+        }
+    }
+}
+
 // ------------------------------------------------------- compress / top-k
 
 /// Writes the indices of all `a[i] > threshold` to `out`, ascending, and

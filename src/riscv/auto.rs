@@ -242,3 +242,16 @@ pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
         *o = x - l;
     }
 }
+
+pub use crate::reduce_common::{GEMM_MR, GEMM_NR};
+
+/// GEMM micro-kernel, same contract as `x86::reduce::gemm_f32_kernel`
+/// (`acc[i][j] += sum_k a[k*MR + i] * b[k*NR + j]`, k ascending). Portable code
+/// (product and sum rounded separately); no RVV kernel yet.
+///
+/// # Panics
+/// If `a.len() < kc * GEMM_MR` or `b.len() < kc * GEMM_NR`.
+pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    crate::reduce_common::gemm_check(kc, a, b);
+    crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc)
+}

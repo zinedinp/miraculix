@@ -168,3 +168,60 @@ fn affine_dot_logsumexp_match_f64() {
     assert_eq!(logsumexp_f32(&[]), f32::NEG_INFINITY);
     assert!(logsumexp_f32(&[1.0, f32::NAN]).is_nan());
 }
+
+fn gemm_want(kc: usize, a: &[f32], b: &[f32], init: &[[f32; GEMM_NR]; GEMM_MR]) -> Vec<f64> {
+    let mut w = vec![0f64; GEMM_MR * GEMM_NR];
+    for i in 0..GEMM_MR {
+        for j in 0..GEMM_NR {
+            w[i * GEMM_NR + j] =
+                init[i][j] as f64 + (0..kc).map(|k| a[k * GEMM_MR + i] as f64 * b[k * GEMM_NR + j] as f64).sum::<f64>();
+        }
+    }
+    w
+}
+
+#[test]
+fn gemm_kernel_matches_f64_on_every_tier() {
+    let mut r = rng(11);
+    let mut f = move || (r() % 2001) as f32 * 1e-3 - 1.0;
+    for t in tiers() {
+        for kc in [0usize, 1, 2, 7, 64, 256, 513] {
+            let a: Vec<f32> = (0..kc * GEMM_MR).map(|_| f()).collect();
+            let b: Vec<f32> = (0..kc * GEMM_NR).map(|_| f()).collect();
+            let mut acc = [[0f32; GEMM_NR]; GEMM_MR];
+            for row in acc.iter_mut() {
+                row.iter_mut().for_each(|x| *x = f());
+            }
+            let want = gemm_want(kc, &a, &b, &acc);
+            let before = acc;
+            gemm_f32_kernel_with(t, kc, &a, &b, &mut acc);
+            if kc == 0 {
+                assert_eq!(acc, before, "{t:?}: kc = 0 must leave acc unchanged");
+            }
+            for i in 0..GEMM_MR {
+                for j in 0..GEMM_NR {
+                    let (g, w) = (acc[i][j] as f64, want[i * GEMM_NR + j]);
+                    assert!((g - w).abs() <= 2e-6 * (kc as f64 + 1.0), "{t:?} kc={kc} [{i}][{j}]: {g} vs {w}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gemm_kernel_propagates_nan() {
+    let mut a = vec![1f32; 3 * GEMM_MR];
+    a[GEMM_MR + 2] = f32::NAN;
+    let b = vec![1f32; 3 * GEMM_NR];
+    let mut acc = [[0f32; GEMM_NR]; GEMM_MR];
+    gemm_f32_kernel(3, &a, &b, &mut acc);
+    assert!(acc[2].iter().all(|x| x.is_nan()));
+    assert!(acc[1].iter().all(|&x| x == 3.0));
+}
+
+#[test]
+#[should_panic]
+fn gemm_kernel_panics_on_short_panel() {
+    let mut acc = [[0f32; GEMM_NR]; GEMM_MR];
+    gemm_f32_kernel(2, &[0.0; GEMM_MR], &[0.0; 2 * GEMM_NR], &mut acc);
+}

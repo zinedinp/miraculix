@@ -646,6 +646,105 @@ pub fn log_softmax_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
     }
 }
 
+// ------------------------------------------------------- GEMM micro-kernel
+
+pub use crate::reduce_common::{GEMM_MR, GEMM_NR};
+
+/// GEMM micro-kernel: `acc[i][j] += sum_k a[k*MR + i] * b[k*NR + j]` for
+/// `k in 0..kc` – one `GEMM_MR × GEMM_NR` (8 × 32) block of `C = A·B`, with A
+/// and B packed into panels (A: `kc` groups of `MR` row values, B: `kc` groups
+/// of `NR` column values). The caller packs, blocks and threads; this keeps
+/// the block in registers (AVX-512F: 16 zmm accumulators; AVX2: four passes of
+/// 4 rows × 16 columns). k runs in ascending order on every tier; the FMA tiers
+/// round once per step, AVX2 without FMA and the scalar tier twice, so the last
+/// bits differ between tiers. NaN and inf propagate.
+///
+/// # Panics
+/// If `a.len() < kc * GEMM_MR` or `b.len() < kc * GEMM_NR`.
+pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    gemm_f32_kernel_with(best_tier(), kc, a, b, acc)
+}
+
+#[doc(hidden)]
+pub fn gemm_f32_kernel_with(tier: Tier, kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    crate::reduce_common::gemm_check(kc, a, b);
+    match tier {
+        // SAFETY: tier chosen from detection; lengths checked above.
+        Tier::Avx512 => unsafe { gemm_kernel_avx512(kc, a.as_ptr(), b.as_ptr(), acc) },
+        Tier::Avx2Fma => unsafe { gemm_kernel_avx2_fma(kc, a.as_ptr(), b.as_ptr(), acc) },
+        Tier::Avx2 => unsafe { gemm_kernel_avx2(kc, a.as_ptr(), b.as_ptr(), acc) },
+        Tier::Scalar => crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc),
+    }
+}
+
+/// # Safety
+/// AVX-512F present; `a`/`b` valid for `kc*MR` / `kc*NR` floats.
+#[target_feature(enable = "avx512f")]
+unsafe fn gemm_kernel_avx512(kc: usize, a: *const f32, b: *const f32, acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    unsafe {
+        let mut c = [[_mm512_setzero_ps(); 2]; GEMM_MR];
+        for (ci, row) in c.iter_mut().zip(acc.iter()) {
+            ci[0] = _mm512_loadu_ps(row.as_ptr());
+            ci[1] = _mm512_loadu_ps(row.as_ptr().add(16));
+        }
+        for k in 0..kc {
+            let b0 = _mm512_loadu_ps(b.add(k * GEMM_NR));
+            let b1 = _mm512_loadu_ps(b.add(k * GEMM_NR + 16));
+            let ak = a.add(k * GEMM_MR);
+            for (i, ci) in c.iter_mut().enumerate() {
+                let ai = _mm512_set1_ps(*ak.add(i));
+                ci[0] = _mm512_fmadd_ps(ai, b0, ci[0]);
+                ci[1] = _mm512_fmadd_ps(ai, b1, ci[1]);
+            }
+        }
+        for (ci, row) in c.iter().zip(acc.iter_mut()) {
+            _mm512_storeu_ps(row.as_mut_ptr(), ci[0]);
+            _mm512_storeu_ps(row.as_mut_ptr().add(16), ci[1]);
+        }
+    }
+}
+
+macro_rules! gemm_avx2_kernel {
+    ($name:ident, $feat:literal, $mac:expr) => {
+        /// # Safety
+        /// Features present; `a`/`b` valid for `kc*MR` / `kc*NR` floats.
+        #[target_feature(enable = $feat)]
+        unsafe fn $name(kc: usize, a: *const f32, b: *const f32, acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+            unsafe {
+                let mac = $mac;
+                // 4 passes (row half × column half) of 4 rows × 2 ymm = 8 accumulators.
+                for r0 in [0usize, 4] {
+                    for c0 in [0usize, 16] {
+                        let mut c = [[_mm256_setzero_ps(); 2]; 4];
+                        for (i, ci) in c.iter_mut().enumerate() {
+                            let row = acc[r0 + i].as_ptr().add(c0);
+                            ci[0] = _mm256_loadu_ps(row);
+                            ci[1] = _mm256_loadu_ps(row.add(8));
+                        }
+                        for k in 0..kc {
+                            let bk = b.add(k * GEMM_NR + c0);
+                            let (b0, b1) = (_mm256_loadu_ps(bk), _mm256_loadu_ps(bk.add(8)));
+                            let ak = a.add(k * GEMM_MR + r0);
+                            for (i, ci) in c.iter_mut().enumerate() {
+                                let ai = _mm256_set1_ps(*ak.add(i));
+                                ci[0] = mac(ai, b0, ci[0]);
+                                ci[1] = mac(ai, b1, ci[1]);
+                            }
+                        }
+                        for (i, ci) in c.iter().enumerate() {
+                            let row = acc[r0 + i].as_mut_ptr().add(c0);
+                            _mm256_storeu_ps(row, ci[0]);
+                            _mm256_storeu_ps(row.add(8), ci[1]);
+                        }
+                    }
+                }
+            }
+        }
+    };
+}
+gemm_avx2_kernel!(gemm_kernel_avx2_fma, "avx2,fma", |x, y, z| _mm256_fmadd_ps(x, y, z));
+gemm_avx2_kernel!(gemm_kernel_avx2, "avx2", |x, y, z| _mm256_add_ps(_mm256_mul_ps(x, y), z));
+
 // ------------------------------------------------------- compress / top-k
 
 /// Writes the indices of all `a[i] > threshold` to `out`, ascending, and

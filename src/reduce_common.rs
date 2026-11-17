@@ -175,3 +175,30 @@ pub(crate) fn logsumexp_with(
     }
     (m as f64 + ln_f64(total)) as f32
 }
+
+// ------------------------------------------------------- GEMM micro-kernel
+
+/// Rows of a packed A panel for `gemm_f32_kernel` (same on every architecture).
+pub const GEMM_MR: usize = 8;
+/// Columns of a packed B panel for `gemm_f32_kernel` (same on every architecture).
+pub const GEMM_NR: usize = 32;
+
+/// Checks the slice lengths of `gemm_f32_kernel`.
+#[inline]
+pub(crate) fn gemm_check(kc: usize, a: &[f32], b: &[f32]) {
+    assert!(a.len() >= kc * GEMM_MR, "gemm_f32_kernel: A panel {} < kc*MR = {}", a.len(), kc * GEMM_MR);
+    assert!(b.len() >= kc * GEMM_NR, "gemm_f32_kernel: B panel {} < kc*NR = {}", b.len(), kc * GEMM_NR);
+}
+
+/// Portable `gemm_f32_kernel`: `acc[i][j] += a[k][i] * b[k][j]`, k ascending,
+/// product and sum rounded separately.
+pub(crate) fn gemm_kernel_scalar(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    for k in 0..kc {
+        let (ak, bk) = (&a[k * GEMM_MR..][..GEMM_MR], &b[k * GEMM_NR..][..GEMM_NR]);
+        for (row, &ai) in acc.iter_mut().zip(ak) {
+            for (c, &bj) in row.iter_mut().zip(bk) {
+                *c += ai * bj;
+            }
+        }
+    }
+}
