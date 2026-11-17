@@ -60,6 +60,7 @@ macro_rules! auto_up {
         return $plain;
     }};
 }
+pub use super::reduce::bf16_to_f32;
 use super::ops::{
     avx::avx_ifma::AvxIfma, avx::avx_vnni::AvxVnni, avx::avx_vnni::vnni_acc_saturating,
     avx::avx_vnni::vnni_acc_wrapping, avx::avx2::Avx2, avx::f16c::F16c,

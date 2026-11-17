@@ -28,6 +28,7 @@ pub mod features;
 pub mod fn_macros;
 /// Token-gated ops (SSE, AVX, AVX-512, ...), fixed-width and slice methods.
 pub mod ops;
+pub mod reduce;
 /// Compile-time shortpath and optional startup verify.
 pub mod shortpath;
 /// Coarse [`GenericLevel`] V1..V4 and [`Avx10`] helpers.

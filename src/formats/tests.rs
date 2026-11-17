@@ -293,3 +293,182 @@ fn fp8_u8_slices_match_scalar_codec() {
         }
     }
 }
+
+// ---- Tenstorrent BFP_B ----
+use super::bfp::*;
+
+struct Xs(u64);
+impl Xs {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+}
+
+/// Mirrors `gen_word` in scripts/tt-oracle/oracle.cpp.
+fn bfp_word(rng: &mut Xs, row: u32) -> u32 {
+    let u = rng.next();
+    let kind = u & 7;
+    if kind == 0 {
+        return (u >> 40) as u32 & 0x8000_0000;
+    }
+    if kind == 1 {
+        return (u >> 8) as u32 & 0x807F_FFFF;
+    }
+    if kind == 2 && row % 97 == 0 {
+        return (u >> 8) as u32 | 0x7F80_0000;
+    }
+    let base = 120 + row % 20;
+    let e = base + ((u >> 40) % 10) as u32 - 5;
+    (((u >> 63) as u32) << 31) | (e << 23) | ((u >> 8) as u32 & 0x7F_FFFF)
+}
+
+fn bfp_words() -> Vec<u32> {
+    let mut rng = Xs(0x9E37_79B9_7F4A_7C15);
+    (0..5000u32).flat_map(|r| (0..16).map(move |_| r)).map(|r| bfp_word(&mut rng, r)).collect()
+}
+
+fn fnv(h: &mut u64, b: u8) {
+    *h ^= b as u64;
+    *h = h.wrapping_mul(0x100_0000_01b3);
+}
+
+fn bfp_hash(elem: BfpElem, exps: &[u8], data: &[u8]) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    let rb = elem.row_bytes();
+    for (r, &e) in exps.iter().enumerate() {
+        fnv(&mut h, e);
+        data[r * rb..][..rb].iter().for_each(|&b| fnv(&mut h, b));
+    }
+    h
+}
+
+// FNV-1a of tt-metal's `row_scalar` output, from scripts/tt-oracle (real bfp_simd.hpp).
+const BFP_ORACLE: [(BfpElem, bool, u64); 6] = [
+    (BfpElem::M7, false, 0xb1fe9e3c9d5acc27),
+    (BfpElem::M7, true, 0xf36a025efdf7cfe7),
+    (BfpElem::M3, false, 0xae31e6784c4da60c),
+    (BfpElem::M3, true, 0xdf714a5662d559f4),
+    (BfpElem::M1, false, 0x71fe9f9c13841376),
+    (BfpElem::M1, true, 0x3f456ba7344920d1),
+];
+
+#[test]
+fn bfp_oracle_matches_tt_metal() {
+    let words = bfp_words();
+    let f32s: Vec<f32> = words.iter().map(|&w| f32::from_bits(w)).collect();
+    let bf: Vec<u16> = words.iter().map(|&w| (w >> 16) as u16).collect();
+    for (elem, is_bf, want) in BFP_ORACLE {
+        for hw in [false, true] {
+            let mut exps = vec![0u8; 5000];
+            let mut data = vec![0u8; 5000 * elem.row_bytes()];
+            match (is_bf, hw) {
+                (false, true) => bfp_encode_rows(elem, &f32s, &mut exps, &mut data),
+                (false, false) => bfp_encode_rows_scalar(elem, &f32s, &mut exps, &mut data),
+                (true, true) => bfp_encode_rows_bf16(elem, &bf, &mut exps, &mut data),
+                (true, false) => bfp_encode_rows_bf16_scalar(elem, &bf, &mut exps, &mut data),
+            }
+            assert_eq!(bfp_hash(elem, &exps, &data), want, "{elem:?} bf16={is_bf} dispatch={hw}");
+        }
+    }
+}
+
+#[test]
+fn bfp_decode_roundtrip_and_edges() {
+    // exactly representable row: 1, -0.5, 0.25, ... all multiples of 2^-6 under shared exp 127
+    let row: [f32; 16] = [1.0, -0.5, 0.25, 0.0, -0.0, 1.984375, -1.0, 0.015625, 0.5, 0.75, -0.125, 0.0625, 1.5, 1.25, -1.75, 0.03125];
+    let (mut e, mut d) = ([0u8; 1], [0u8; 16]);
+    bfp_encode_rows(BfpElem::M7, &row, &mut e, &mut d);
+    assert_eq!(e[0], 127);
+    let mut back = [0f32; 16];
+    bfp_decode_rows(BfpElem::M7, &e, &d, &mut back);
+    for i in 0..16 {
+        assert_eq!(back[i], if row[i] == 0.0 { 0.0 } else { row[i] }, "{i}"); // -0 suppressed
+    }
+    let mut bb = [0u16; 16];
+    bfp_decode_rows_bf16(BfpElem::M7, &e, &d, &mut bb);
+    for i in 0..16 {
+        assert_eq!(f32::from_bits((bb[i] as u32) << 16), back[i]);
+    }
+    // exponent-0 inputs flush; all-zero row has shared 0 and decodes to zero
+    let z = [f32::from_bits(1); 16];
+    bfp_encode_rows(BfpElem::M3, &z, &mut e, &mut d[..8]);
+    assert_eq!(e[0], 0);
+    assert!(d[..8].iter().all(|&b| b == 0));
+    // M1 keeps the top element at magnitude 1 (hidden one), small ones round away
+    let mut r1 = [0.001f32; 16];
+    r1[0] = 8.0;
+    r1[1] = -8.0;
+    let mut d1 = [0u8; 4];
+    bfp_encode_rows(BfpElem::M1, &r1, &mut e, &mut d1);
+    let mut b1 = [0f32; 16];
+    bfp_decode_rows(BfpElem::M1, &e, &d1, &mut b1);
+    assert_eq!((b1[0], b1[1], b1[2]), (8.0, -8.0, 0.0));
+}
+
+#[test]
+fn mx_block_size_is_a_parameter() {
+    let src = data(64);
+    for blk in [16usize, 32, 64] {
+        let nb = 64 / blk;
+        let elem = MxElem::Fp4;
+        let mut sc = vec![0u8; nb];
+        let mut d = vec![0u8; nb * elem.block_bytes_for(blk)];
+        mx_quantize_block(elem, blk, &src, &mut sc, &mut d);
+        let mut out = vec![0.0; 64];
+        mx_dequantize_block(elem, blk, &sc, &d, &mut out);
+        for b in 0..nb {
+            let amax = src[b * blk..][..blk].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            for i in b * blk..(b + 1) * blk {
+                assert!((src[i] - out[i]).abs() <= 0.35 * amax, "{blk}: {} vs {}", src[i], out[i]);
+            }
+        }
+    }
+    // default wrappers are the 32-block case
+    let (mut s1, mut d1, mut s2, mut d2) = ([0u8; 2], [0u8; 32], [0u8; 2], [0u8; 32]);
+    mx_quantize(MxElem::Fp4, &src, &mut s1, &mut d1);
+    mx_quantize_block(MxElem::Fp4, 32, &src, &mut s2, &mut d2);
+    assert_eq!((s1, d1), (s2, d2));
+}
+
+// ---- GGUF, against scripts/gguf-oracle (ggml's dequantizers) ----
+use super::gguf::*;
+
+fn gh(h: &mut u64, f: f32) {
+    for i in 0..4 {
+        fnv(h, (f.to_bits() >> (8 * i)) as u8);
+    }
+}
+
+fn rhalf(rng: &mut Xs) -> u16 {
+    let u = rng.next();
+    (((u >> 20) & 0x8000) as u16) | ((8 + (u >> 5) % 14) as u16) << 10 | (u & 0x3FF) as u16
+}
+
+#[test]
+fn gguf_matches_ggml() {
+    let mut rng = Xs(0x9E37_79B9_7F4A_7C15);
+    let mut b8 = Vec::new();
+    for _ in 0..64 {
+        b8.extend(rhalf(&mut rng).to_le_bytes());
+        (0..32).for_each(|_| b8.push(rng.next() as u8));
+    }
+    let mut y = vec![0f32; 64 * 32];
+    dequantize_q8_0(&b8, &mut y);
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    y.iter().for_each(|&v| gh(&mut h, v));
+    assert_eq!(h, 0xb680d70beff8c7b9, "q8_0");
+
+    let mut b6 = Vec::new();
+    for _ in 0..16 {
+        (0..128 + 64 + 16).for_each(|_| b6.push(rng.next() as u8));
+        b6.extend(rhalf(&mut rng).to_le_bytes());
+    }
+    let mut y = vec![0f32; 16 * 256];
+    dequantize_q6_k(&b6, &mut y);
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    y.iter().for_each(|&v| gh(&mut h, v));
+    assert_eq!(h, 0xe74fcf89b24037b8, "q6_k");
+}

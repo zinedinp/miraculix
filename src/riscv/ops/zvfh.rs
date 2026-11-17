@@ -15,7 +15,7 @@ pub struct Zvfh(());
 impl Zvfh {
     /// `None` if the CPU lacks `Zvfh`.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::riscv::detect_features())
     }
 
     /// From a raw feature bitset.

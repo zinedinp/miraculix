@@ -298,6 +298,12 @@ impl MiniFloat {
                 t.cvt_bf16_to_f32_slice(src, dst);
                 return;
             }
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                crate::x86::reduce::bf16_to_f32(src, dst);
+                return;
+            }
+            #[allow(unreachable_code)]
             dst.iter_mut().zip(src).for_each(|(d, &s)| *d = f32::from_bits((s as u32) << 16));
             return;
         }

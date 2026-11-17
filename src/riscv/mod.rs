@@ -4,6 +4,8 @@
 
 use crate::level_cache::CachedU8;
 
+pub mod auto;
+pub mod class;
 pub mod features;
 pub mod ops;
 pub mod shortpath;
@@ -13,6 +15,22 @@ pub use features::{Feature, FeatureSet};
 pub use tiers::RiscvLevel;
 
 static CACHED_LEVEL: CachedU8 = CachedU8::new();
+static CACHED_FEATURES: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// All detected features, cached after the first call (bit 31 marks "filled";
+/// there are far fewer than 31 features). Prefer over [`FeatureSet::detect`],
+/// which re-reads auxv and `riscv_hwprobe` every time.
+pub fn detect_features() -> FeatureSet {
+    use core::sync::atomic::Ordering::Relaxed;
+    const FILLED: u32 = 1 << 31;
+    let v = CACHED_FEATURES.load(Relaxed);
+    if v & FILLED != 0 {
+        return FeatureSet::from_bits(v & !FILLED);
+    }
+    let set = FeatureSet::detect();
+    CACHED_FEATURES.store(set.bits() | FILLED, Relaxed);
+    set
+}
 
 fn level_from_u8(v: u8) -> Option<RiscvLevel> {
     match v {

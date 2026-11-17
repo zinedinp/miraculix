@@ -56,7 +56,13 @@ impl MxElem {
 
     /// Bytes of element data per 32-element block.
     pub const fn block_bytes(self) -> usize {
-        MX_BLOCK * self.bits() / 8
+        self.block_bytes_for(MX_BLOCK)
+    }
+
+    /// Bytes of element data per block of `block` elements (`block * bits` must be a multiple of 8).
+    pub const fn block_bytes_for(self, block: usize) -> usize {
+        assert!(block * self.bits() % 8 == 0, "block * bits must be a multiple of 8");
+        block * self.bits() / 8
     }
 
     fn emax(self) -> i32 {
@@ -94,17 +100,28 @@ fn round_even(v: f32) -> f32 {
 }
 
 /// Dequantizes MX blocks into `out`. `out.len()` must be a multiple of
-/// [`MX_BLOCK`]; `scales` holds one E8M0 byte per block, `data` the packed
+/// [`MX_BLOCK`] (see [`mx_dequantize_block`] for other sizes); `scales` holds one E8M0 byte per block, `data` the packed
 /// elements.
 ///
 /// # Panics
 /// If the lengths do not match the block count.
 pub fn mx_dequantize(elem: MxElem, scales: &[u8], data: &[u8], out: &mut [f32]) {
-    assert_eq!(out.len() % MX_BLOCK, 0);
-    let blocks = out.len() / MX_BLOCK;
-    assert!(scales.len() >= blocks && data.len() >= blocks * elem.block_bytes());
-    let (w, bb) = (elem.bits(), elem.block_bytes());
-    for (b, ob) in out.chunks_exact_mut(MX_BLOCK).enumerate() {
+    mx_dequantize_block(elem, MX_BLOCK, scales, data, out);
+}
+
+/// [`mx_dequantize`] with a block size of `block` elements (the OCP spec uses
+/// 32; other sizes, such as 16, are not OCP MX but share the scheme).
+/// `block * bits` must be a multiple of 8.
+///
+/// # Panics
+/// If `block` is 0, `out.len()` is not a multiple of it, or the lengths do not match.
+pub fn mx_dequantize_block(elem: MxElem, block: usize, scales: &[u8], data: &[u8], out: &mut [f32]) {
+    assert!(block > 0 && out.len() % block == 0);
+    let blocks = out.len() / block;
+    let bb = elem.block_bytes_for(block);
+    assert!(scales.len() >= blocks && data.len() >= blocks * bb);
+    let w = elem.bits();
+    for (b, ob) in out.chunks_exact_mut(block).enumerate() {
         let scale = e8m0_to_f32(scales[b]);
         let d = &data[b * bb..(b + 1) * bb];
         for (i, o) in ob.iter_mut().enumerate() {
@@ -124,11 +141,20 @@ pub fn mx_dequantize(elem: MxElem, scales: &[u8], data: &[u8], out: &mut [f32]) 
 /// # Panics
 /// If the lengths do not match the block count.
 pub fn mx_quantize(elem: MxElem, src: &[f32], scales: &mut [u8], data: &mut [u8]) {
-    assert_eq!(src.len() % MX_BLOCK, 0);
-    let blocks = src.len() / MX_BLOCK;
-    assert!(scales.len() >= blocks && data.len() >= blocks * elem.block_bytes());
-    let (w, bb) = (elem.bits(), elem.block_bytes());
-    for (b, sb) in src.chunks_exact(MX_BLOCK).enumerate() {
+    mx_quantize_block(elem, MX_BLOCK, src, scales, data);
+}
+
+/// [`mx_quantize`] with a block size of `block` elements. See [`mx_dequantize_block`].
+///
+/// # Panics
+/// If `block` is 0, `src.len()` is not a multiple of it, or the lengths do not match.
+pub fn mx_quantize_block(elem: MxElem, block: usize, src: &[f32], scales: &mut [u8], data: &mut [u8]) {
+    assert!(block > 0 && src.len() % block == 0);
+    let blocks = src.len() / block;
+    let bb = elem.block_bytes_for(block);
+    assert!(scales.len() >= blocks && data.len() >= blocks * bb);
+    let w = elem.bits();
+    for (b, sb) in src.chunks_exact(block).enumerate() {
         let amax = sb.iter().fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
         let s = if amax == 0.0 || !amax.is_finite() {
             127

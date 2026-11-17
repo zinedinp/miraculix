@@ -1,0 +1,139 @@
+use super::*;
+
+fn tiers() -> Vec<Tier> {
+    available_tiers().into_iter().flatten().collect()
+}
+
+fn rng(seed: u64) -> impl FnMut() -> u64 {
+    let mut s = seed | 1;
+    move || {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        s
+    }
+}
+
+fn data(n: usize, seed: u64, nan_every: usize) -> Vec<f32> {
+    let mut r = rng(seed);
+    (0..n)
+        .map(|i| {
+            if nan_every > 0 && i % nan_every == nan_every - 1 {
+                f32::NAN
+            } else {
+                // coarse grid so ties are common
+                ((r() % 401) as f32 - 200.0) * 0.25
+            }
+        })
+        .collect()
+}
+
+fn ref_max(a: &[f32]) -> f32 {
+    a.iter().copied().filter(|x| !x.is_nan()).fold(f32::NEG_INFINITY, f32::max)
+}
+
+#[test]
+fn max_min_argmax_match_scalar_on_every_tier() {
+    for t in tiers() {
+        for n in (0..140).chain([1000, 4097]) {
+            for nan in [0, 3, 1] {
+                let a = data(n, n as u64 + 7, nan);
+                assert_eq!(reduce_max_f32_with(t, &a), ref_max(&a), "{t:?} n={n} nan={nan}");
+                let mn = a.iter().copied().filter(|x| !x.is_nan()).fold(f32::INFINITY, f32::min);
+                assert_eq!(reduce_min_f32_with(t, &a), mn, "{t:?} min n={n}");
+                let want = a
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, x)| !x.is_nan())
+                    .fold(None, |b: Option<(usize, f32)>, (i, &x)| match b {
+                        Some((_, bv)) if bv >= x => b,
+                        _ => Some((i, x)),
+                    });
+                assert_eq!(argmax_f32_with(t, &a), want, "{t:?} argmax n={n} nan={nan}");
+            }
+        }
+    }
+    assert_eq!(argmax_f32(&[]), None);
+    assert_eq!(argmax_f32(&[f32::NAN; 40]), None);
+    assert_eq!(argmax_f32(&[f32::NEG_INFINITY; 20]), Some((0, f32::NEG_INFINITY)));
+}
+
+#[test]
+fn sum_is_close_on_every_tier() {
+    for t in tiers() {
+        for n in (0..140).chain([1000, 100_003]) {
+            let a = data(n, 3, 0);
+            let want: f64 = a.iter().map(|&x| x as f64).sum();
+            let got = reduce_sum_f32_with(t, &a) as f64;
+            assert!((got - want).abs() <= 1e-3 + want.abs() * 1e-6, "{t:?} n={n}: {got} vs {want}");
+        }
+    }
+    assert!(reduce_sum_f32(&[1.0, f32::NAN]).is_nan());
+}
+
+#[test]
+fn bf16_widening_is_exact() {
+    for t in tiers() {
+        for n in [0, 1, 7, 8, 9, 15, 16, 17, 33, 200] {
+            let a: Vec<u16> = (0..n).map(|i| (i as u16).wrapping_mul(40503)).collect();
+            let mut out = vec![0f32; n];
+            bf16_to_f32_with(t, &a, &mut out);
+            for i in 0..n {
+                assert_eq!(out[i].to_bits(), (a[i] as u32) << 16, "{t:?} n={n} i={i}");
+            }
+        }
+    }
+}
+
+#[test]
+fn exp_error_bound_on_every_tier() {
+    let mut xs: Vec<f32> = (-9000..=8900).map(|i| i as f32 * 0.01).collect();
+    xs.extend([0.0, -0.0, 1e-8, -1e-8, 88.72283, 88.8, -87.33654, -87.4, -200.0, 200.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN]);
+    for t in tiers() {
+        let mut out = vec![0f32; xs.len()];
+        exp_f32_with(t, &xs, &mut out);
+        let mut worst = 0f64;
+        for (&x, &y) in xs.iter().zip(&out) {
+            if x.is_nan() {
+                assert!(y.is_nan());
+            } else if x < -87.33655 {
+                assert_eq!(y, 0.0, "{t:?} {x}");
+            } else if x > 88.72283 {
+                assert_eq!(y, f32::INFINITY, "{t:?} {x}");
+            } else {
+                let want = (x as f64).exp();
+                let rel = ((y as f64) - want).abs() / want;
+                worst = worst.max(rel);
+                assert!(rel <= 3e-7, "{t:?} exp({x}) = {y}, want {want}, rel {rel}");
+            }
+        }
+        eprintln!("{t:?}: worst exp rel error {worst:e}");
+    }
+}
+
+#[test]
+fn compress_and_topk_match_reference_on_every_tier() {
+    for t in tiers() {
+        for n in [0usize, 1, 5, 8, 15, 16, 17, 100, 255, 256, 257, 1000, 5000] {
+            for nan in [0, 7] {
+                let a = data(n, 11 + n as u64, nan);
+                let thr = 10.0;
+                let mut out = vec![0u32; n];
+                let c = compress_gt_f32_with(t, &a, thr, &mut out);
+                let want: Vec<u32> = (0..n as u32).filter(|&i| a[i as usize] > thr).collect();
+                assert_eq!(&out[..c], &want[..], "{t:?} compress n={n}");
+                for k in [1usize, 3, 40, 300] {
+                    let (mut idx, mut val) = (vec![0u32; k], vec![0f32; k]);
+                    let got = topk_f32_with(t, &a, &mut idx, &mut val);
+                    let mut all: Vec<(usize, f32)> = a.iter().copied().enumerate().filter(|(_, x)| !x.is_nan()).collect();
+                    all.sort_by(|x, y| y.1.partial_cmp(&x.1).unwrap().then(x.0.cmp(&y.0)));
+                    all.truncate(k);
+                    assert_eq!(got, all.len(), "{t:?} topk count n={n} k={k}");
+                    for j in 0..got {
+                        assert_eq!((idx[j] as usize, val[j]), all[j], "{t:?} topk n={n} k={k} j={j}");
+                    }
+                }
+            }
+        }
+    }
+}

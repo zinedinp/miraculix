@@ -140,6 +140,14 @@
 #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
 mod level_cache;
 
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "x86_64",
+    target_arch = "riscv32",
+    target_arch = "riscv64"
+))]
+mod topk;
+
 /// Matrix-engine number formats (FP8, MX, NVFP4, TF32, packed INT1/2/4) on the CPU.
 pub mod formats;
 

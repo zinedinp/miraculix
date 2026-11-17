@@ -89,15 +89,15 @@ mod ext0 {
     pub const ZVFBFWMA: u64 = 1 << 54;
 }
 
-/// `riscv_hwprobe(2)` key `RISCV_HWPROBE_KEY_IMA_EXT_0`.
+/// `riscv_hwprobe(2)` for one key (`RISCV_HWPROBE_KEY_*`). `None` if the kernel
+/// lacks the syscall or does not know the key. Linux on RISC-V only.
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "riscv32", target_arch = "riscv64")
 ))]
-fn hwprobe_ext0() -> u64 {
-    const KEY_IMA_EXT_0: i64 = 4;
+pub(super) fn hwprobe(key: i64) -> Option<u64> {
     const NR_RISCV_HWPROBE: usize = 258;
-    let mut pair = [KEY_IMA_EXT_0 as usize, 0usize];
+    let mut pair = [key as usize, 0usize];
     let ret: usize;
     // SAFETY: Linux riscv syscall ABI; `pair` is one valid {key, value} entry
     // and the cpu set is empty (all online harts). Unknown syscall -> error.
@@ -110,18 +110,21 @@ fn hwprobe_ext0() -> u64 {
             options(nostack),
         );
     }
-    if ret == 0 && pair[0] as i64 == KEY_IMA_EXT_0 { pair[1] as u64 } else { 0 }
+    (ret == 0 && pair[0] as i64 == key).then_some(pair[1] as u64)
 }
 
-#[cfg(all(
-    any(target_os = "linux", target_os = "android", target_os = "freebsd"),
-    not(all(
-        target_os = "linux",
-        any(target_arch = "riscv32", target_arch = "riscv64")
-    ))
-))]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "riscv32", target_arch = "riscv64")
+)))]
+pub(super) fn hwprobe(_key: i64) -> Option<u64> {
+    None
+}
+
+/// `RISCV_HWPROBE_KEY_IMA_EXT_0`, or 0 when unavailable.
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
 fn hwprobe_ext0() -> u64 {
-    0
+    hwprobe(4).unwrap_or(0)
 }
 
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
@@ -240,6 +243,20 @@ impl FeatureSet {
             }
             Self(set)
         }
+    }
+
+    /// This set plus `feature`.
+    pub fn with(self, feature: Feature) -> Self {
+        Self(self.0 | 1 << feature.bit())
+    }
+
+    /// Raw bits (one per [`Feature::ALL`] entry). Fits `u32`.
+    pub(super) fn bits(self) -> u32 {
+        self.0 as u32
+    }
+
+    pub(super) fn from_bits(bits: u32) -> Self {
+        Self(bits as u128)
     }
 
     pub fn contains(self, feature: Feature) -> bool {

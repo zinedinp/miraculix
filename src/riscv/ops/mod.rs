@@ -7,8 +7,10 @@
 //!
 //! | File | Extension | Token |
 //! |---|---|---|
+//! | [`rvv`] | `V` (base vector: elementwise, reductions, compare/compress, `i8` dot) | `Rvv` |
 //! | [`zvfh`] | `Zvfh` (vector half-precision FP) | `Zvfh` |
 //! | [`zvfbf`] | `Zvfbfmin` (BF16 converts), `Zvfbfwma` (BF16 widening FMA) | `Zvfbfmin`, `Zvfbfwma` |
 
+pub mod rvv;
 pub mod zvfbf;
 pub mod zvfh;

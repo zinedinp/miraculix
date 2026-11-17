@@ -17,6 +17,8 @@
 //! | TF32 | `f32` with 13 low mantissa bits rounded off | [`round_to_tf32`] |
 //! | INT4 / INT2 / INT1 | packed bytes, unpack to `i8`/`u8` | [`int`] |
 //! | INT1 `and.popc` / `xor.popc` | `count_ones` on bytes | [`int::popcount_and`] |
+//! | Tenstorrent `BFP_B` (`Bfp8_b`/`Bfp4_b`/`Bfp2_b`) | 16-value rows with a shared max exponent, bit-exact with tt-metal | [`bfp`] |
+//! | GGUF `Q8_0`, `Q6_K` (decode only) | ggml's dequantizers | [`gguf`] |
 //! | FP64, FP32, INT8/16/32 | native, see the per-arch `ops` | - |
 //!
 //! Everything is plain scalar Rust over slices (the compiler auto-vectorizes
@@ -31,6 +33,8 @@
 //! assert_eq!(MiniFloat::E4M3Fn.max_finite(), 448.0);
 //! ```
 
+pub mod bfp;
+pub mod gguf;
 pub mod int;
 mod minifloat;
 pub mod mx;

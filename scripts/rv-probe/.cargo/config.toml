@@ -1,6 +1,6 @@
 # Run: cd scripts/rv-probe && cargo run   (needs qemu-riscv64)
-# no_std binary with its own _start; exit status = bitmask of failed checks.
-# 0 = all passed. 98 = Zvfh, 97 = Zvfbfmin, 96 = Zvfbfwma not detected (check the qemu -cpu flags).
+# no_std binary with its own _start; exit status = first failing check id + 1.
+# 0 = all passed. 98 = Zvfh, 97 = Zvfbfmin, 96 = Zvfbfwma, 95 = V not detected (check the qemu -cpu flags).
 [build]
 target = "riscv64gc-unknown-linux-gnu"
 [target.riscv64gc-unknown-linux-gnu]

@@ -421,10 +421,6 @@ helper. Search by the miraculix name instead (`<op>_<type>x<lanes>`, e.g.
 | Byte permutes at 512 bits | `Avx512Vbmi::permutexvar_u8x64`, `permutex2var_u8x64` | `src/x86/ops/avx512/avx512vbmi.rs` |
 | Neon horizontal add | `vaddvq_u8` and friends (the 128-bit forms only) | `src/aarch64/ops/neon/neon.rs` |
 
-Added after the Melon TODO (all in `src/x86/ops/extra.rs`, on the usual
-tokens). Unpack, byte shuffle and `permute2x128` work **inside each 128-bit
-lane**; see the module doc for how to restore order:
-
 | Need | Name |
 |---|---|
 | f32 <-> f64 | `Sse2::cvt_f32x4_to_f64x2` / `cvt_f64x2_to_f32x4`, `Avx::cvt_f32x4_to_f64x4` / `cvt_f64x4_to_f32x4`, `Avx512f::cvt_f32x8_to_f64x8` / `cvt_f64x8_to_f32x8` |
@@ -457,8 +453,36 @@ parameters).
 `v.avx512bw`, ...; `V4Vbmi` adds `vbmi`). Pair them with `avx_v3_fn!`,
 `avx512_v4_fn!`, `avx512_v4_vbmi_fn!`.
 
-Nothing from the original gap list is open except the portable lane layer (a
-separate crate). The Neon ops were tested under `qemu-aarch64`.
+the portable lane layer is open
+(a separate crate). The Neon ops were tested under `qemu-aarch64`.
+
+**Whole-slice reductions and searches** (sampling over logits). `x86::reduce`
+and `riscv::auto` have the same names and rules: NaN is ignored, ties pick the
+lowest index.
+
+| Need | Name |
+|---|---|
+| Sum / max / min of a slice | `reduce_sum_f32`, `reduce_max_f32`, `reduce_min_f32` |
+| Index of the maximum | `argmax_f32(&[f32]) -> Option<(usize, f32)>` |
+| Top k, no allocation | `topk_f32(a, &mut idx, &mut val) -> found` (sorted descending) |
+| Threshold compare + compress | `compress_gt_f32(a, thr, &mut out) -> count` (`vcompressps` on AVX-512, `vcompress` on RVV) |
+| `exp` with a stated error | `x86::reduce::exp_f32` (relative error <= 3e-7, worst measured 1.2e-7) |
+| bfloat16 -> `f32` slice | `x86::reduce::bf16_to_f32`, `riscv::auto::bf16_to_f32` (also `formats::MiniFloat::Bf16`) |
+
+**Number formats** live in `miraculix::formats` (any architecture, no token):
+FP8 / FP6 / FP4 / FP16 / BF16 (`MiniFloat`), OCP MX and NVFP4 (`mx`, block size
+is a parameter via `*_block`), packed INT1/2/4 (`int`), TF32, Tenstorrent
+`BFP_B` (`bfp`: `Bfp8_b`/`Bfp4_b`/`Bfp2_b`, checked bit for bit against
+tt-metal with `scripts/tt-oracle`, AVX-512 fast path) and GGUF `Q8_0` / `Q6_K`
+decode (`gguf`, checked against ggml with `scripts/gguf-oracle`).
+
+**RISC-V.** `riscv::ops::rvv::Rvv` (elementwise f32/i32, FMA, reductions,
+compare/compress, `i8` dot product), `Zvfh`, `Zvfbfmin`, `Zvfbfwma`, all
+`asm!` loops that work for any VLEN, plus `riscv::auto` dispatch.
+`riscv::class::RiscvClass::detect()` reports `VectorAccelerator` for a
+SiFive-vendor core with `V` and VLEN >= 512 (the X280 shape in the Tenstorrent
+Blackhole); `core_id()` and `vlen_bits()` give the raw facts. Tested under
+`qemu-riscv64` at VLEN 128 to 1024 with `scripts/rv-probe`.
 
 **Big-endian AArch64** builds without a feature flag (`cfg(target_endian)`
 selects the lane-order fixes). Checked under `qemu-aarch64_be` with

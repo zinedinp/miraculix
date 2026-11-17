@@ -21,7 +21,7 @@ pub struct Zvfbfwma(());
 impl Zvfbfmin {
     /// `None` if the CPU lacks `Zvfbfmin`.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::riscv::detect_features())
     }
 
     /// From a raw feature bitset.
@@ -107,7 +107,7 @@ impl Zvfbfmin {
 impl Zvfbfwma {
     /// `None` if the CPU lacks `Zvfbfwma`.
     pub fn detect() -> Option<Self> {
-        Self::from_features(FeatureSet::detect())
+        Self::from_features(crate::riscv::detect_features())
     }
 
     /// From a raw feature bitset.
