@@ -83,14 +83,38 @@ macro_rules! binop {
 }
 
 impl Rvv {
-    binop!(/// `out[i] = a[i] + b[i]` (`vfadd.vv`).
-        add_f32, f32, "e32", "32", "vfadd.vv");
-    binop!(/// `out[i] = a[i] - b[i]` (`vfsub.vv`).
-        sub_f32, f32, "e32", "32", "vfsub.vv");
-    binop!(/// `out[i] = a[i] * b[i]` (`vfmul.vv`).
-        mul_f32, f32, "e32", "32", "vfmul.vv");
-    binop!(/// `out[i] = a[i] + b[i]`, wrapping (`vadd.vv`).
-        add_i32, i32, "e32", "32", "vadd.vv");
+    binop!(
+        /// `out[i] = a[i] + b[i]` (`vfadd.vv`).
+        add_f32,
+        f32,
+        "e32",
+        "32",
+        "vfadd.vv"
+    );
+    binop!(
+        /// `out[i] = a[i] - b[i]` (`vfsub.vv`).
+        sub_f32,
+        f32,
+        "e32",
+        "32",
+        "vfsub.vv"
+    );
+    binop!(
+        /// `out[i] = a[i] * b[i]` (`vfmul.vv`).
+        mul_f32,
+        f32,
+        "e32",
+        "32",
+        "vfmul.vv"
+    );
+    binop!(
+        /// `out[i] = a[i] + b[i]`, wrapping (`vadd.vv`).
+        add_i32,
+        i32,
+        "e32",
+        "32",
+        "vadd.vv"
+    );
 
     /// `out[i] = a[i] * b[i] + c[i]`, fused (`vfmacc.vv`).
     ///
@@ -98,8 +122,13 @@ impl Rvv {
     /// If the slices differ in length.
     pub fn fmadd_f32(self, a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
         assert!(a.len() == b.len() && b.len() == c.len() && c.len() == out.len());
-        let (mut pa, mut pb, mut pc, mut po, mut n) =
-            (a.as_ptr(), b.as_ptr(), c.as_ptr(), out.as_mut_ptr(), a.len());
+        let (mut pa, mut pb, mut pc, mut po, mut n) = (
+            a.as_ptr(),
+            b.as_ptr(),
+            c.as_ptr(),
+            out.as_mut_ptr(),
+            a.len(),
+        );
         if n == 0 {
             return;
         }
@@ -136,7 +165,7 @@ impl Rvv {
         if n == 0 {
             return 0.0;
         }
-        let r: f32;
+        let r: u32;
         // SAFETY: token proves V; reads `n` f32.
         unsafe {
             rvv_asm!(
@@ -153,13 +182,13 @@ impl Rvv {
                 "add {p}, {p}, {t}",
                 "bnez {n}, 2b",
                 "vsetivli zero, 1, e32, m1, ta, ma",
-                "vfmv.f.s {r}, v24",
+                "vmv.x.s {r}, v24",
                 ".option pop",
-                p = inout(reg) p, n = inout(reg) n, vl = out(reg) _, t = out(reg) _, r = out(freg) r
+                p = inout(reg) p, n = inout(reg) n, vl = out(reg) _, t = out(reg) _, r = out(reg) r
             );
         }
         let _ = (p, n);
-        r
+        f32::from_bits(r)
     }
 
     /// Largest element, NaN ignored (`vfredmax`); `-inf` if there is none.
@@ -168,7 +197,7 @@ impl Rvv {
         if n == 0 {
             return f32::NEG_INFINITY;
         }
-        let r: f32;
+        let r: u32;
         // SAFETY: as above. `vfredmax` follows IEEE maximumNumber: a NaN lane
         // loses to a number; it returns NaN only if the accumulator is NaN.
         unsafe {
@@ -176,7 +205,7 @@ impl Rvv {
                 ".option push",
                 ".option arch, +v",
                 "vsetvli {t}, zero, e32, m1, ta, ma",
-                "vfmv.v.f v24, {init}",
+                "vmv.v.x v24, {init}",
                 "2:",
                 "vsetvli {vl}, {n}, e32, m4, ta, ma",
                 "vle32.v v8, ({p})",
@@ -186,13 +215,14 @@ impl Rvv {
                 "add {p}, {p}, {t}",
                 "bnez {n}, 2b",
                 "vsetivli zero, 1, e32, m1, ta, ma",
-                "vfmv.f.s {r}, v24",
+                "vmv.x.s {r}, v24",
                 ".option pop",
                 p = inout(reg) p, n = inout(reg) n, vl = out(reg) _, t = out(reg) _,
-                init = in(freg) f32::NEG_INFINITY, r = out(freg) r
+                init = in(reg) f32::NEG_INFINITY.to_bits(), r = out(reg) r
             );
         }
         let _ = (p, n);
+        let r = f32::from_bits(r);
         if r.is_nan() { f32::NEG_INFINITY } else { r }
     }
 
@@ -202,14 +232,14 @@ impl Rvv {
         if n == 0 {
             return f32::INFINITY;
         }
-        let r: f32;
+        let r: u32;
         // SAFETY: as above.
         unsafe {
             rvv_asm!(
                 ".option push",
                 ".option arch, +v",
                 "vsetvli {t}, zero, e32, m1, ta, ma",
-                "vfmv.v.f v24, {init}",
+                "vmv.v.x v24, {init}",
                 "2:",
                 "vsetvli {vl}, {n}, e32, m4, ta, ma",
                 "vle32.v v8, ({p})",
@@ -219,13 +249,14 @@ impl Rvv {
                 "add {p}, {p}, {t}",
                 "bnez {n}, 2b",
                 "vsetivli zero, 1, e32, m1, ta, ma",
-                "vfmv.f.s {r}, v24",
+                "vmv.x.s {r}, v24",
                 ".option pop",
                 p = inout(reg) p, n = inout(reg) n, vl = out(reg) _, t = out(reg) _,
-                init = in(freg) f32::INFINITY, r = out(freg) r
+                init = in(reg) f32::INFINITY.to_bits(), r = out(reg) r
             );
         }
         let _ = (p, n);
+        let r = f32::from_bits(r);
         if r.is_nan() { f32::INFINITY } else { r }
     }
 
@@ -247,7 +278,8 @@ impl Rvv {
                 "2:",
                 "vsetvli {vl}, {n}, e32, m4, ta, ma",
                 "vle32.v v8, ({p})",
-                "vmfeq.vf v0, v8, {m}",
+                "vmv.v.x v16, {m}",
+                "vmfeq.vv v0, v8, v16",
                 "vfirst.m {t}, v0",
                 "bgez {t}, 3f",
                 "sub {n}, {n}, {vl}",
@@ -263,7 +295,7 @@ impl Rvv {
                 "4:",
                 ".option pop",
                 p = inout(reg) p, n = inout(reg) n, vl = out(reg) _, t = out(reg) _,
-                base = out(reg) _, m = in(freg) m, r = out(reg) found
+                base = out(reg) _, m = in(reg) m.to_bits(), r = out(reg) found
             );
         }
         let _ = (p, n);
@@ -292,7 +324,8 @@ impl Rvv {
                 "2:",
                 "vsetvli {vl}, {n}, e32, m4, ta, ma",
                 "vle32.v v8, ({p})",
-                "vmfgt.vf v0, v8, {thr}",
+                "vmv.v.x v20, {thr}",
+                "vmflt.vv v0, v20, v8",
                 "vid.v v12",
                 "vadd.vx v12, v12, {base}",
                 "vcompress.vm v16, v12, v0",
@@ -310,7 +343,7 @@ impl Rvv {
                 ".option pop",
                 p = inout(reg) p, o = inout(reg) o, n = inout(reg) n, vl = out(reg) _,
                 t = out(reg) _, c = out(reg) _, base = out(reg) _, total = out(reg) total,
-                thr = in(freg) threshold
+                thr = in(reg) threshold.to_bits()
             );
         }
         let _ = (p, o, n);
@@ -336,7 +369,7 @@ impl Rvv {
         if n == 0 {
             return 0;
         }
-        let r: i64;
+        let r: isize;
         // SAFETY: token proves V; reads `n` i8 from each.
         unsafe {
             rvv_asm!(
@@ -382,37 +415,77 @@ impl Rvv {
         if n == 0 {
             return;
         }
-        // SAFETY: token proves V; reads and writes `n` f32. Note the rounding:
+        // The scalar operands as bit patterns, loaded with `lw` and broadcast with `vmv.v.x`:
+        // no float registers, so the same code builds for soft-float targets.
+        let c: [u32; 13] = [
+            EXP_LO.to_bits(),
+            EXP_HI.to_bits(),
+            f32::INFINITY.to_bits(),
+            1.0f32.to_bits(),
+            LOG2E.to_bits(),
+            LN2_HI.to_bits(),
+            LN2_LO.to_bits(),
+            P[0].to_bits(),
+            P[1].to_bits(),
+            P[2].to_bits(),
+            P[3].to_bits(),
+            P[4].to_bits(),
+            P[5].to_bits(),
+        ];
+        // SAFETY: token proves V; reads and writes `n` f32, reads the 13 words of `c`.
+        // Note the rounding:
         // `vfcvt.x.f.v` uses `frm` (nearest even by default, as `asm!` code
         // must assume the ABI default).
         unsafe {
             rvv_asm!(
                 ".option push",
                 ".option arch, +v",
+                // lo v28, hi v30, inf v6, one v4, log2e v2, for every element of every trip.
+                "vsetvli {t}, zero, e32, m2, ta, ma",
+                "lw {t}, 0({c})",
+                "vmv.v.x v28, {t}",
+                "lw {t}, 4({c})",
+                "vmv.v.x v30, {t}",
+                "lw {t}, 8({c})",
+                "vmv.v.x v6, {t}",
+                "lw {t}, 12({c})",
+                "vmv.v.x v4, {t}",
+                "lw {t}, 16({c})",
+                "vmv.v.x v2, {t}",
                 "2:",
                 "vsetvli {vl}, {n}, e32, m2, ta, ma",
                 "vle32.v v8, ({a})",
-                "vfmax.vf v10, v8, {lo}",
-                "vfmin.vf v10, v10, {hi}",
-                "vfmul.vf v12, v10, {log2e}",
+                "vfmax.vv v10, v8, v28",
+                "vfmin.vv v10, v10, v30",
+                "vfmul.vv v12, v10, v2",
                 "vfcvt.x.f.v v12, v12",
                 "vfcvt.f.x.v v14, v12",
                 "vmv.v.v v16, v10",
-                "vfnmsac.vf v16, {ln2hi}, v14",
-                "vfnmsac.vf v16, {ln2lo}, v14",
-                "vfmv.v.f v18, {p0}",
-                "vfmv.v.f v20, {p1}",
+                "lw {t}, 20({c})",
+                "vmv.v.x v24, {t}",
+                "vfnmsac.vv v16, v24, v14",
+                "lw {t}, 24({c})",
+                "vmv.v.x v24, {t}",
+                "vfnmsac.vv v16, v24, v14",
+                "lw {t}, 28({c})",
+                "vmv.v.x v18, {t}",
+                "lw {t}, 32({c})",
+                "vmv.v.x v20, {t}",
                 "vfmadd.vv v18, v16, v20",
-                "vfmv.v.f v20, {p2}",
+                "lw {t}, 36({c})",
+                "vmv.v.x v20, {t}",
                 "vfmadd.vv v18, v16, v20",
-                "vfmv.v.f v20, {p3}",
+                "lw {t}, 40({c})",
+                "vmv.v.x v20, {t}",
                 "vfmadd.vv v18, v16, v20",
-                "vfmv.v.f v20, {p4}",
+                "lw {t}, 44({c})",
+                "vmv.v.x v20, {t}",
                 "vfmadd.vv v18, v16, v20",
-                "vfmv.v.f v20, {p5}",
+                "lw {t}, 48({c})",
+                "vmv.v.x v20, {t}",
                 "vfmadd.vv v18, v16, v20",
                 "vfmul.vv v22, v16, v16",
-                "vfadd.vf v20, v16, {one}",
+                "vfadd.vv v20, v16, v4",
                 "vfmacc.vv v20, v18, v22",
                 "vsra.vi v24, v12, 1",
                 "vsub.vv v26, v12, v24",
@@ -423,10 +496,10 @@ impl Rvv {
                 "vsll.vi v26, v26, 23",
                 "vfmul.vv v20, v20, v24",
                 "vfmul.vv v20, v20, v26",
-                "vmflt.vf v0, v8, {lo}",
+                "vmflt.vv v0, v8, v28",
                 "vmerge.vim v20, v20, 0, v0",
-                "vmfgt.vf v0, v8, {hi}",
-                "vfmerge.vfm v20, v20, {inf}, v0",
+                "vmflt.vv v0, v30, v8",
+                "vmerge.vvm v20, v20, v6, v0",
                 "vmfne.vv v0, v8, v8",
                 "vmerge.vvm v20, v20, v8, v0",
                 "vse32.v v20, ({o})",
@@ -437,11 +510,7 @@ impl Rvv {
                 "bnez {n}, 2b",
                 ".option pop",
                 a = inout(reg) pa, o = inout(reg) po, n = inout(reg) n, vl = out(reg) _, t = out(reg) _,
-                lo = in(freg) EXP_LO, hi = in(freg) EXP_HI, log2e = in(freg) LOG2E,
-                ln2hi = in(freg) LN2_HI, ln2lo = in(freg) LN2_LO, one = in(freg) 1.0f32,
-                inf = in(freg) f32::INFINITY,
-                p0 = in(freg) P[0], p1 = in(freg) P[1], p2 = in(freg) P[2],
-                p3 = in(freg) P[3], p4 = in(freg) P[4], p5 = in(freg) P[5]
+                c = in(reg) c.as_ptr()
             );
         }
         let _ = (pa, po, n);
@@ -553,9 +622,33 @@ macro_rules! pack1 {
 bfp_row!(row_m7_f32, load_f32!(), "7", "17", "65535", "127", pack7!());
 bfp_row!(row_m3_f32, load_f32!(), "3", "21", "1048575", "7", pack3!());
 bfp_row!(row_m1_f32, load_f32!(), "1", "23", "4194303", "1", pack1!());
-bfp_row!(row_m7_bf16, load_bf16!(), "7", "17", "65535", "127", pack7!());
-bfp_row!(row_m3_bf16, load_bf16!(), "3", "21", "1048575", "7", pack3!());
-bfp_row!(row_m1_bf16, load_bf16!(), "1", "23", "4194303", "1", pack1!());
+bfp_row!(
+    row_m7_bf16,
+    load_bf16!(),
+    "7",
+    "17",
+    "65535",
+    "127",
+    pack7!()
+);
+bfp_row!(
+    row_m3_bf16,
+    load_bf16!(),
+    "3",
+    "21",
+    "1048575",
+    "7",
+    pack3!()
+);
+bfp_row!(
+    row_m1_bf16,
+    load_bf16!(),
+    "1",
+    "23",
+    "4194303",
+    "1",
+    pack1!()
+);
 
 impl Rvv {
     /// Encodes `f32` rows as Tenstorrent `BFP_B` (see [`crate::formats::bfp`]);
@@ -597,7 +690,13 @@ impl Rvv {
     }
 
     /// Token-taking [`crate::formats::bfp::bfp_decode_rows_tensix_f32`] (portable decoder).
-    pub fn bfp_decode_rows_tensix_f32(self, elem: BfpElem, exps: &[u8], data: &[u8], out: &mut [f32]) {
+    pub fn bfp_decode_rows_tensix_f32(
+        self,
+        elem: BfpElem,
+        exps: &[u8],
+        data: &[u8],
+        out: &mut [f32],
+    ) {
         crate::formats::bfp::bfp_decode_rows_tensix_f32(elem, exps, data, out);
     }
 
@@ -605,7 +704,13 @@ impl Rvv {
     ///
     /// # Panics
     /// If `src.len()` is not a multiple of 16, or `exps` / `data` have the wrong length.
-    pub fn bfp_encode_rows_bf16(self, elem: BfpElem, src: &[u16], exps: &mut [u8], data: &mut [u8]) {
+    pub fn bfp_encode_rows_bf16(
+        self,
+        elem: BfpElem,
+        src: &[u16],
+        exps: &mut [u8],
+        data: &mut [u8],
+    ) {
         let rb = elem.row_bytes();
         assert_eq!(src.len() % BFP_ROW, 0);
         assert!(exps.len() == src.len() / BFP_ROW && data.len() == exps.len() * rb);

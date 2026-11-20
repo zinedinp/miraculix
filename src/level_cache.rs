@@ -23,12 +23,20 @@ impl CachedU8 {
         }
         let computed = init();
         debug_assert!(computed != EMPTY, "tier discriminant must not equal EMPTY");
+        #[cfg(target_has_atomic = "8")]
         match self
             .0
             .compare_exchange(EMPTY, computed, Ordering::Release, Ordering::Acquire)
         {
             Ok(_) => computed,
             Err(actual) => actual,
+        }
+        // No compare-and-swap (e.g. `riscv32im`, no `A`): a plain store. Every racing
+        // `init` computes the same value, so whichever store lands last is still right.
+        #[cfg(not(target_has_atomic = "8"))]
+        {
+            self.0.store(computed, Ordering::Release);
+            computed
         }
     }
 }

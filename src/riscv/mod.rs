@@ -62,6 +62,10 @@ pub fn warm_up() {
 }
 
 #[cfg(test)]
+#[path = "test/rvv.rs"]
+mod rvv_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
