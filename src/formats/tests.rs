@@ -513,3 +513,94 @@ fn bfp_v4_token_matches_scalar() {
         assert_eq!(o1.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), o2.iter().map(|x| x.to_bits()).collect::<Vec<_>>());
     }
 }
+
+/// Every shared exponent with every code of `elem`: `(exps, data)`, one row per 16 codes.
+fn bfp_all_codes(elem: BfpElem) -> (Vec<u8>, Vec<u8>) {
+    let w = elem.mantissa_bits() + 1;
+    let codes = 1u32 << w;
+    let rows_per_exp = (codes as usize).div_ceil(BFP_ROW);
+    let per = 8 / w as usize;
+    let (mut exps, mut data) = (Vec::new(), Vec::new());
+    for e in 0..=255u8 {
+        for r in 0..rows_per_exp {
+            exps.push(e);
+            for b in 0..elem.row_bytes() {
+                let mut byte = 0u32;
+                for k in 0..per {
+                    let i = (r * BFP_ROW + b * per + k) as u32 % codes;
+                    byte |= i << (k as u32 * w);
+                }
+                data.push(byte as u8);
+            }
+        }
+    }
+    (exps, data)
+}
+
+#[test]
+fn bfp_decodes_dispatch_matches_scalar_for_every_code_and_exponent() {
+    for elem in [BfpElem::M7, BfpElem::M3, BfpElem::M1] {
+        let (e, d) = bfp_all_codes(elem);
+        let n = e.len() * BFP_ROW;
+        let (mut a, mut b) = (vec![0f32; n], vec![0f32; n]);
+        bfp_decode_rows(elem, &e, &d, &mut a);
+        bfp_decode_rows_scalar(elem, &e, &d, &mut b);
+        assert!(a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()), "{elem:?} f32");
+        bfp_decode_rows_tensix_f32(elem, &e, &d, &mut a);
+        bfp_decode_rows_tensix_f32_scalar(elem, &e, &d, &mut b);
+        assert!(a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()), "{elem:?} tensix f32");
+        let (mut a, mut b) = (vec![0u16; n], vec![0u16; n]);
+        bfp_decode_rows_bf16(elem, &e, &d, &mut a);
+        bfp_decode_rows_bf16_scalar(elem, &e, &d, &mut b);
+        assert_eq!(a, b, "{elem:?} bf16");
+        bfp_decode_rows_tensix(elem, &e, &d, &mut a);
+        bfp_decode_rows_tensix_scalar(elem, &e, &d, &mut b);
+        assert_eq!(a, b, "{elem:?} tensix");
+    }
+}
+
+#[test]
+fn bfp_tensix_decode_is_the_unpackers() {
+    let one = |elem: BfpElem, e: u8, code: u8| {
+        let mut out = [0u16; 16];
+        bfp_decode_rows_tensix(elem, &[e], &vec![code; elem.row_bytes()], &mut out);
+        out[0]
+    };
+    // 64 / 64 * 2^0 = 1.0; 8 / 8 * 2^0 for BFP4; a full BFP2 magnitude.
+    assert_eq!(one(BfpElem::M7, 127, 0x40), 0x3f80);
+    assert_eq!(one(BfpElem::M3, 127, 0x04), 0x3f80);
+    assert_eq!(one(BfpElem::M1, 127, 0x01), 0x3f80);
+    assert_eq!(one(BfpElem::M7, 127, 0xc0), 0xbf80);
+    // A sign without magnitude is -inf; the exponent wraps under the leading zeros.
+    assert_eq!(one(BfpElem::M7, 127, 0x80), 0xff80);
+    assert_eq!(one(BfpElem::M3, 3, 0x88), 0xff80);
+    assert_eq!(one(BfpElem::M7, 0, 0x01), 0x7d00);
+    assert_eq!(one(BfpElem::M7, 0, 0x00), 0x0000);
+}
+
+/// The two decodes differ exactly on a sign without magnitude, where the normalised exponent
+/// `shared - leading zeros` is 0 or wraps, and where it is 255 with a mantissa (the value
+/// overflows to `inf`, the unpacker writes a NaN pattern).
+#[test]
+fn bfp_tensix_and_value_decodes_differ_only_where_documented() {
+    for elem in [BfpElem::M7, BfpElem::M3, BfpElem::M1] {
+        let bits = elem.mantissa_bits();
+        let (e, d) = bfp_all_codes(elem);
+        let n = e.len() * BFP_ROW;
+        let (mut v, mut t) = (vec![0u16; n], vec![0u16; n]);
+        bfp_decode_rows_bf16(elem, &e, &d, &mut v);
+        bfp_decode_rows_tensix(elem, &e, &d, &mut t);
+        let codes = 1usize << (bits + 1);
+        for i in 0..n {
+            let shared = e[i / BFP_ROW] as i32;
+            let code = ((i % BFP_ROW) + (i / BFP_ROW) % codes.div_ceil(BFP_ROW) * BFP_ROW) % codes;
+            let (sign, mag) = (code >> bits, code & ((1 << bits) - 1));
+            let lz = if mag == 0 { 0 } else { bits as i32 - 1 - (usize::BITS - 1 - mag.leading_zeros()) as i32 };
+            let pow2 = mag.is_power_of_two();
+            let documented = (mag == 0 && sign != 0)
+                || (mag != 0 && shared - lz <= 0)
+                || (mag != 0 && !pow2 && shared - lz == 255);
+            assert_eq!(v[i] != t[i], documented, "{elem:?} shared {shared} code {code:#x}: {:#06x} {:#06x}", v[i], t[i]);
+        }
+    }
+}
