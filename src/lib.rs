@@ -152,6 +152,9 @@ mod reduce_common;
 /// Matrix-engine number formats (FP8, MX, NVFP4, TF32, packed INT1/2/4) on the CPU.
 pub mod formats;
 
+/// Copies into and out of write-combining memory (PCIe BARs of accelerator cards).
+pub mod mmio;
+
 /// x86 / x86_64: detect tiers and features, auto slice ops, tokens, kernel macros.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
