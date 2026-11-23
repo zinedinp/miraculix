@@ -2,7 +2,7 @@
 //!
 //! Whole-slice operations that return a value or an index: the shape of
 //! sampling over a logit vector. Like [`super::auto_up`], each function picks
-//! AVX-512F, AVX2 or SSE2 from [`super::detect_features`] (cached) and falls
+//! AVX-512F, AVX2, AVX or SSE2 from [`super::detect_features`] (cached) and falls
 //! back to portable code (only 32-bit x86 without SSE2 gets there). Also available as [`super::auto`]-style free
 //! functions; names are prefixed `reduce_` where [`super::auto_up`] already
 //! has an elementwise op of the same name.
@@ -42,6 +42,9 @@ pub enum Tier {
     Scalar,
     /// Every x86_64: 128-bit, no FMA.
     Sse2,
+    /// AVX without AVX2 (Sandy Bridge, Ivy Bridge, Bulldozer): 256-bit
+    /// floats, 128-bit integers, no FMA.
+    Avx,
     Avx2,
     Avx2Fma,
     Avx512,
@@ -59,6 +62,8 @@ fn tier_of(f: FeatureSet) -> Tier {
         Tier::Avx2Fma
     } else if f.contains(Feature::Avx2) {
         Tier::Avx2
+    } else if f.contains(Feature::Avx) {
+        Tier::Avx
     } else if f.contains(Feature::Sse2) {
         Tier::Sse2
     } else {
@@ -68,11 +73,12 @@ fn tier_of(f: FeatureSet) -> Tier {
 
 /// Tiers the running CPU can execute, best last. For tests and benchmarks.
 #[doc(hidden)]
-pub fn available_tiers() -> [Option<Tier>; 5] {
+pub fn available_tiers() -> [Option<Tier>; 6] {
     let f = detect_features();
     [
         Some(Tier::Scalar),
         f.contains(Feature::Sse2).then_some(Tier::Sse2),
+        f.contains(Feature::Avx).then_some(Tier::Avx),
         f.contains(Feature::Avx2).then_some(Tier::Avx2),
         (f.contains(Feature::Avx2) && f.contains(Feature::Fma)).then_some(Tier::Avx2Fma),
         f.contains(Feature::Avx512f).then_some(Tier::Avx512),
@@ -103,7 +109,7 @@ pub fn bf16_to_f32_with(tier: Tier, a: &[u16], out: &mut [f32]) {
         // (`best_tier` / `available_tiers`), and slice bounds are respected.
         Tier::Avx512 => unsafe { bf16_avx512(a, out) },
         Tier::Avx2 | Tier::Avx2Fma => unsafe { bf16_avx2(a, out) },
-        Tier::Sse2 => unsafe { bf16_sse2(a, out) },
+        Tier::Avx | Tier::Sse2 => unsafe { bf16_sse2(a, out) },
         Tier::Scalar => 0,
     };
     for i in done..a.len() {
@@ -180,7 +186,7 @@ pub fn reduce_sum_f32_with(tier: Tier, a: &[f32]) -> f32 {
     let (mut s, done) = match tier {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
         Tier::Avx512 => unsafe { sum_avx512(a) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { sum_avx2(a) },
+        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { sum_avx(a) },
         Tier::Sse2 => unsafe { sum_sse2(a) },
         Tier::Scalar => (0.0, 0),
     };
@@ -212,8 +218,8 @@ unsafe fn sum_avx512(a: &[f32]) -> (f32, usize) {
     }
 }
 
-#[target_feature(enable = "avx2")]
-unsafe fn sum_avx2(a: &[f32]) -> (f32, usize) {
+#[target_feature(enable = "avx")]
+unsafe fn sum_avx(a: &[f32]) -> (f32, usize) {
     unsafe {
         let mut acc = [_mm256_setzero_ps(); 4];
         let mut i = 0;
@@ -256,7 +262,7 @@ unsafe fn sum_sse2(a: &[f32]) -> (f32, usize) {
 }
 
 macro_rules! ext_kernels {
-    ($avx512:ident, $avx2:ident, $sse2:ident, $op512:ident, $op256:ident, $op128:ident, $red512:ident, $init:expr) => {
+    ($avx512:ident, $avx:ident, $sse2:ident, $op512:ident, $op256:ident, $op128:ident, $red512:ident, $init:expr) => {
         #[target_feature(enable = "avx512f")]
         unsafe fn $avx512(a: &[f32]) -> (f32, usize) {
             unsafe {
@@ -278,8 +284,8 @@ macro_rules! ext_kernels {
             }
         }
 
-        #[target_feature(enable = "avx2")]
-        unsafe fn $avx2(a: &[f32]) -> (f32, usize) {
+        #[target_feature(enable = "avx")]
+        unsafe fn $avx(a: &[f32]) -> (f32, usize) {
             unsafe {
                 let mut acc = [_mm256_set1_ps($init); 4];
                 let mut i = 0;
@@ -326,7 +332,7 @@ macro_rules! ext_kernels {
 }
 ext_kernels!(
     max_avx512,
-    max_avx2,
+    max_avx,
     max_sse2,
     _mm512_max_ps,
     _mm256_max_ps,
@@ -336,7 +342,7 @@ ext_kernels!(
 );
 ext_kernels!(
     min_avx512,
-    min_avx2,
+    min_avx,
     min_sse2,
     _mm512_min_ps,
     _mm256_min_ps,
@@ -360,7 +366,7 @@ pub fn reduce_max_f32_with(tier: Tier, a: &[f32]) -> f32 {
     let (mut m, done) = match tier {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
         Tier::Avx512 => unsafe { max_avx512(a) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { max_avx2(a) },
+        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { max_avx(a) },
         Tier::Sse2 => unsafe { max_sse2(a) },
         Tier::Scalar => (f32::NEG_INFINITY, 0),
     };
@@ -377,7 +383,7 @@ pub fn reduce_min_f32_with(tier: Tier, a: &[f32]) -> f32 {
     let (mut m, done) = match tier {
         // SAFETY: as above.
         Tier::Avx512 => unsafe { min_avx512(a) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { min_avx2(a) },
+        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { min_avx(a) },
         Tier::Sse2 => unsafe { min_sse2(a) },
         Tier::Scalar => (f32::INFINITY, 0),
     };
@@ -407,7 +413,7 @@ fn find_first_eq(tier: Tier, a: &[f32], v: f32) -> Option<usize> {
     let done = match tier {
         // SAFETY: as above.
         Tier::Avx512 => unsafe { find_avx512(a, v) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { find_avx2(a, v) },
+        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { find_avx(a, v) },
         Tier::Sse2 => unsafe { find_sse2(a, v) },
         Tier::Scalar => Ok(0),
     };
@@ -434,8 +440,8 @@ unsafe fn find_avx512(a: &[f32], v: f32) -> Result<usize, usize> {
     }
 }
 
-#[target_feature(enable = "avx2")]
-unsafe fn find_avx2(a: &[f32], v: f32) -> Result<usize, usize> {
+#[target_feature(enable = "avx")]
+unsafe fn find_avx(a: &[f32], v: f32) -> Result<usize, usize> {
     unsafe {
         let t = _mm256_set1_ps(v);
         let mut i = 0;
@@ -475,7 +481,7 @@ unsafe fn find_sse2(a: &[f32], v: f32) -> Result<usize, usize> {
 /// polynomial, scaling by a power of two. **Relative error <= 3e-7** (about
 /// 2.5 ulp) for inputs in `[-87.3, 88.7]`, on every tier (FMA tiers fuse the
 /// polynomial, so results can differ from the scalar tier in the last bit;
-/// SSE2, which also serves AVX2 without FMA, rounds `x * log2(e)` by the
+/// SSE2, which also serves AVX and AVX2 without FMA, rounds `x * log2(e)` by the
 /// MXCSR mode, to nearest unless it was changed).
 /// Inputs below `-87.33655` return `0` (the subnormal range is flushed), above
 /// `88.72283` return `+inf`, NaN returns NaN. Not bit-exact with `libm`.
@@ -495,7 +501,7 @@ pub fn exp_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
         // SAFETY: as above (`Avx2Fma` requires FMA, which `available_tiers` checks).
         Tier::Avx512 => unsafe { exp_avx512(a, out) },
         Tier::Avx2Fma => unsafe { exp_avx2_fma(a, out) },
-        Tier::Avx2 | Tier::Sse2 => unsafe { exp_sse2(a, out) },
+        Tier::Avx | Tier::Avx2 | Tier::Sse2 => unsafe { exp_sse2(a, out) },
         Tier::Scalar => 0,
     };
     for i in done..a.len() {
@@ -661,7 +667,7 @@ pub fn affine_u16_f32_with(tier: Tier, q: &[u16], a: f32, b: f32, out: &mut [f32
         Tier::Avx512 => unsafe { affine_avx512(q, a, b, out) },
         Tier::Avx2Fma => unsafe { affine_avx2_fma(q, a, b, out) },
         Tier::Avx2 => unsafe { affine_avx2(q, a, b, out) },
-        Tier::Sse2 => unsafe { affine_sse2(q, a, b, out) },
+        Tier::Avx | Tier::Sse2 => unsafe { affine_sse2(q, a, b, out) },
         Tier::Scalar => 0,
     };
     for i in done..q.len() {
@@ -737,7 +743,7 @@ unsafe fn affine_sse2(q: &[u16], a: f32, b: f32, out: &mut [f32]) -> usize {
 }
 
 /// Dot product `sum(a[i] * b[i])`. Four vector accumulators of fused
-/// multiply-adds on AVX-512F and AVX2+FMA (AVX2 alone and SSE2 multiply then add);
+/// multiply-adds on AVX-512F and AVX2+FMA (AVX, AVX2 alone and SSE2 multiply then add);
 /// the order depends on the tier, so the last bits differ between CPUs, and
 /// the scalar tail and the scalar tier round the product separately. NaN and
 /// inf propagate.
@@ -755,7 +761,7 @@ pub fn dot_f32_with(tier: Tier, a: &[f32], b: &[f32]) -> f32 {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
         Tier::Avx512 => unsafe { dot_avx512(a, b) },
         Tier::Avx2Fma => unsafe { dot_avx2_fma(a, b) },
-        Tier::Avx2 => unsafe { dot_avx2(a, b) },
+        Tier::Avx | Tier::Avx2 => unsafe { dot_avx(a, b) },
         Tier::Sse2 => unsafe { dot_sse2(a, b) },
         Tier::Scalar => (0.0, 0),
     };
@@ -796,7 +802,7 @@ unsafe fn dot_avx512(a: &[f32], b: &[f32]) -> (f32, usize) {
     }
 }
 
-macro_rules! dot_avx2_kernel {
+macro_rules! dot_ymm_kernel {
     ($name:ident, $feat:literal, $mac:expr) => {
         #[target_feature(enable = $feat)]
         unsafe fn $name(a: &[f32], b: &[f32]) -> (f32, usize) {
@@ -832,8 +838,8 @@ macro_rules! dot_avx2_kernel {
         }
     };
 }
-dot_avx2_kernel!(dot_avx2_fma, "avx2,fma", |x, y, z| _mm256_fmadd_ps(x, y, z));
-dot_avx2_kernel!(dot_avx2, "avx2", |x, y, z| _mm256_add_ps(
+dot_ymm_kernel!(dot_avx2_fma, "avx2,fma", |x, y, z| _mm256_fmadd_ps(x, y, z));
+dot_ymm_kernel!(dot_avx, "avx", |x, y, z| _mm256_add_ps(
     _mm256_mul_ps(x, y),
     z
 ));
@@ -878,7 +884,7 @@ unsafe fn dot_sse2(a: &[f32], b: &[f32]) -> (f32, usize) {
 /// cross-correlation. One dispatch for the whole slice, vectorised across the
 /// outputs (eight vector accumulators, each tap broadcast once per pass), so
 /// short filters run as fast as long ones. Every output adds its products in
-/// ascending `k`; AVX-512F and AVX2+FMA fuse them, AVX2 alone, SSE2, the
+/// ascending `k`; AVX-512F and AVX2+FMA fuse them, AVX, AVX2 alone, SSE2, the
 /// scalar tier and the scalar tail (`out.len() % lanes`) round each product,
 /// so the last bits differ between tiers. NaN and inf propagate.
 ///
@@ -896,7 +902,7 @@ pub fn sliding_dot_f32_with(tier: Tier, signal: &[f32], taps: &[f32], out: &mut 
         // window `signal[i..i + taps.len()]` with `i < out.len()` in bounds.
         Tier::Avx512 => unsafe { sliding_avx512(signal, taps, out) },
         Tier::Avx2Fma => unsafe { sliding_avx2_fma(signal, taps, out) },
-        Tier::Avx2 => unsafe { sliding_avx2(signal, taps, out) },
+        Tier::Avx | Tier::Avx2 => unsafe { sliding_avx(signal, taps, out) },
         Tier::Sse2 => unsafe { sliding_sse2(signal, taps, out) },
         Tier::Scalar => 0,
     };
@@ -959,8 +965,8 @@ sliding_kernel!(
     |x, y, z| _mm256_fmadd_ps(x, y, z)
 );
 sliding_kernel!(
-    sliding_avx2,
-    "avx2",
+    sliding_avx,
+    "avx",
     8,
     _mm256_setzero_ps,
     _mm256_set1_ps,
@@ -1023,9 +1029,9 @@ pub use crate::reduce_common::{GEMM_MR, GEMM_NR};
 /// `k in 0..kc` – one `GEMM_MR × GEMM_NR` (8 × 32) block of `C = A·B`, with A
 /// and B packed into panels (A: `kc` groups of `MR` row values, B: `kc` groups
 /// of `NR` column values). The caller packs, blocks and threads; this keeps
-/// the block in registers (AVX-512F: 16 zmm accumulators; AVX2: four passes of
+/// the block in registers (AVX-512F: 16 zmm accumulators; AVX/AVX2: four passes of
 /// 4 rows × 16 columns; SSE2: eight passes of 4 rows × 8 columns). k runs in
-/// ascending order on every tier; the FMA tiers round once per step, AVX2
+/// ascending order on every tier; the FMA tiers round once per step, AVX, AVX2
 /// without FMA, SSE2 and the scalar tier twice, so the last bits differ between
 /// tiers. NaN and inf propagate.
 ///
@@ -1048,7 +1054,7 @@ pub fn gemm_f32_kernel_with(
         // SAFETY: tier chosen from detection; lengths checked above.
         Tier::Avx512 => unsafe { gemm_kernel_avx512(kc, a.as_ptr(), b.as_ptr(), acc) },
         Tier::Avx2Fma => unsafe { gemm_kernel_avx2_fma(kc, a.as_ptr(), b.as_ptr(), acc) },
-        Tier::Avx2 => unsafe { gemm_kernel_avx2(kc, a.as_ptr(), b.as_ptr(), acc) },
+        Tier::Avx | Tier::Avx2 => unsafe { gemm_kernel_avx(kc, a.as_ptr(), b.as_ptr(), acc) },
         Tier::Sse2 => unsafe { gemm_kernel_sse2(kc, a.as_ptr(), b.as_ptr(), acc) },
         Tier::Scalar => crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc),
     }
@@ -1086,7 +1092,7 @@ unsafe fn gemm_kernel_avx512(
     }
 }
 
-macro_rules! gemm_avx2_kernel {
+macro_rules! gemm_ymm_kernel {
     ($name:ident, $feat:literal, $mac:expr) => {
         /// # Safety
         /// Features present; `a`/`b` valid for `kc*MR` / `kc*NR` floats.
@@ -1129,10 +1135,10 @@ macro_rules! gemm_avx2_kernel {
         }
     };
 }
-gemm_avx2_kernel!(gemm_kernel_avx2_fma, "avx2,fma", |x, y, z| _mm256_fmadd_ps(
+gemm_ymm_kernel!(gemm_kernel_avx2_fma, "avx2,fma", |x, y, z| _mm256_fmadd_ps(
     x, y, z
 ));
-gemm_avx2_kernel!(gemm_kernel_avx2, "avx2", |x, y, z| _mm256_add_ps(
+gemm_ymm_kernel!(gemm_kernel_avx, "avx", |x, y, z| _mm256_add_ps(
     _mm256_mul_ps(x, y),
     z
 ));
@@ -1182,7 +1188,7 @@ unsafe fn gemm_kernel_sse2(
 /// returns how many there are. NaN never matches.
 ///
 /// On AVX-512 this is `vcompressps` on an index vector (register form, fast
-/// on AMD too); AVX2 and SSE2 use `movemask`; otherwise scalar.
+/// on AMD too); AVX and SSE2 use `movemask`; otherwise scalar.
 ///
 /// # Panics
 /// If `out.len() < a.len()` (the worst case is every element matching).
@@ -1197,7 +1203,7 @@ pub fn compress_gt_f32_with(tier: Tier, a: &[f32], threshold: f32, out: &mut [u3
         // SAFETY: as above. The kernels write at most `done` indices plus 16 slack lanes
         // that stay below `a.len() <= out.len()` (see `compress_avx512`).
         Tier::Avx512 => unsafe { compress_avx512(a, threshold, out) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { compress_avx2(a, threshold, out) },
+        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { compress_avx(a, threshold, out) },
         Tier::Sse2 => unsafe { compress_sse2(a, threshold, out) },
         Tier::Scalar => (0, 0),
     };
@@ -1231,8 +1237,8 @@ unsafe fn compress_avx512(a: &[f32], thr: f32, out: &mut [u32]) -> (usize, usize
     }
 }
 
-#[target_feature(enable = "avx2")]
-unsafe fn compress_avx2(a: &[f32], thr: f32, out: &mut [u32]) -> (usize, usize) {
+#[target_feature(enable = "avx")]
+unsafe fn compress_avx(a: &[f32], thr: f32, out: &mut [u32]) -> (usize, usize) {
     unsafe {
         let t = _mm256_set1_ps(thr);
         let (mut n, mut i) = (0usize, 0usize);

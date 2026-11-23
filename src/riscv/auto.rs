@@ -204,24 +204,31 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
     }
 }
 
-/// `out[i] = a * q[i] + b` with `q[i]` an unsigned 16-bit integer. Portable
-/// code (two roundings); no RVV kernel yet.
+/// `out[i] = a * q[i] + b` with `q[i]` an unsigned 16-bit integer, two
+/// roundings on RVV and in the portable code alike.
 ///
 /// # Panics
 /// If the lengths differ.
 pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+    if let Some(t) = rvv() {
+        return t.affine_u16_f32(q, a, b, out);
+    }
     assert_eq!(q.len(), out.len());
     for i in 0..q.len() {
         out[i] = a * (q[i] as f32) + b;
     }
 }
 
-/// Dot product `sum(a[i] * b[i])`. Portable code (four lane sums, each
-/// product rounded separately); no RVV kernel yet. NaN and inf propagate.
+/// Dot product `sum(a[i] * b[i])`. RVV fuses per lane and adds the lanes
+/// unordered; the portable code keeps four lane sums and rounds each
+/// product. NaN and inf propagate.
 ///
 /// # Panics
 /// If the lengths differ.
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    if let Some(t) = rvv() {
+        return t.dot_f32(a, b);
+    }
     assert_eq!(a.len(), b.len());
     let mut lanes = [0f32; 4];
     for i in 0..a.len() {
@@ -249,12 +256,15 @@ pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
 }
 
 /// `out[i] = sum_k(signal[i + k] * taps[k])`, same contract as
-/// `x86::reduce::sliding_dot_f32`. Portable code (k ascending, each product
-/// rounded); no RVV kernel yet.
+/// `x86::reduce::sliding_dot_f32`. RVV strip-mines across the outputs and
+/// fuses; the portable code rounds each product. k ascending on both.
 ///
 /// # Panics
 /// If `out` is not empty and `signal.len() + 1 < out.len() + taps.len()`.
 pub fn sliding_dot_f32(signal: &[f32], taps: &[f32], out: &mut [f32]) {
+    if let Some(t) = rvv() {
+        return t.sliding_dot_f32(signal, taps, out);
+    }
     crate::reduce_common::sliding_check(signal, taps, out);
     crate::reduce_common::sliding_scalar(signal, taps, out, 0);
 }

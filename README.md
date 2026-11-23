@@ -468,6 +468,13 @@ lowest index.
 | Threshold compare + compress | `compress_gt_f32(a, thr, &mut out) -> count` (`vcompressps` on AVX-512, `vcompress` on RVV) |
 | `exp` with a stated error | `x86::reduce::exp_f32`, `aarch64::reduce::exp_f32` (relative error <= 3e-7, worst measured 1.2e-7; no RISC-V yet) |
 | bfloat16 -> `f32` slice | `x86::reduce::bf16_to_f32`, `aarch64::reduce::bf16_to_f32`, `riscv::auto::bf16_to_f32` (also `formats::MiniFloat::Bf16`) |
+| Dot product | `dot_f32(a, b) -> f32` (fused on AVX-512F, AVX2+FMA, Neon, RVV) |
+| FIR filter / cross-correlation | `sliding_dot_f32(signal, taps, &mut out)`: `out[i] = sum_k signal[i + k] * taps[k]`, one dispatch, vectorised across the outputs |
+
+On x86 each of these has AVX and SSE2 rungs below AVX2 (SSE2 is the x86_64
+baseline), so a CPU without AVX2 still runs vector code, not scalar. The `auto_up` multiply-add
+family (`fmadd_*`, `fmsub_*`, `fnmadd_*`, `fnmsub_*`, `p4fmadd_f32`,
+`p4fnmadd_f32`) falls back to unfused AVX, then SSE, below FMA.
 
 **Prefetch hints** live in `miraculix::prefetch` (any architecture, no token,
 safe: a prefetch never faults): `read(p, Locality::L1)`, `write(p, ..)`,

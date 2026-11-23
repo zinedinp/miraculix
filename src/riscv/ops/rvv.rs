@@ -5,8 +5,8 @@
 //! All vector registers are declared clobbered.
 //!
 //! These cover what a kernel needs beyond conversions: elementwise
-//! add/mul/FMA, reductions, compare + select-by-index, and a widening
-//! `i8` dot product. Names and NaN rules match `x86::reduce` where both exist.
+//! add/mul/FMA, reductions, compare + select-by-index, a widening `i8` dot
+//! product, the `f32` dot product, `u16` dequantising and the sliding dot. Names and NaN rules match `x86::reduce` where both exist.
 
 use core::arch::asm;
 
@@ -397,6 +397,146 @@ impl Rvv {
         }
         let _ = (pa, pb, n);
         r as i32
+    }
+}
+
+impl Rvv {
+    /// Dot product `sum(a[i] * b[i])`: fused per lane across the strips
+    /// (`vfmacc.vv`, tail undisturbed), then `vfredusum` (unordered, so the
+    /// last bits depend on VLEN). NaN and inf propagate.
+    ///
+    /// # Panics
+    /// If the slices differ in length.
+    pub fn dot_f32(self, a: &[f32], b: &[f32]) -> f32 {
+        assert_eq!(a.len(), b.len());
+        let (mut pa, mut pb, mut n) = (a.as_ptr(), b.as_ptr(), a.len());
+        if n == 0 {
+            return 0.0;
+        }
+        let r: u32;
+        // SAFETY: token proves V; reads `n` f32 from each.
+        unsafe {
+            rvv_asm!(
+                ".option push",
+                ".option arch, +v",
+                "vsetvli {t}, zero, e32, m4, ta, ma",
+                "vmv.v.i v8, 0",
+                "2:",
+                // `tu`: a short last strip keeps the other lanes' sums.
+                "vsetvli {vl}, {n}, e32, m4, tu, ma",
+                "vle32.v v16, ({a})",
+                "vle32.v v20, ({b})",
+                "vfmacc.vv v8, v16, v20",
+                "sub {n}, {n}, {vl}",
+                "slli {t}, {vl}, 2",
+                "add {a}, {a}, {t}",
+                "add {b}, {b}, {t}",
+                "bnez {n}, 2b",
+                "vsetvli {t}, zero, e32, m4, ta, ma",
+                "vmv.s.x v24, zero",
+                "vfredusum.vs v24, v8, v24",
+                "vmv.x.s {r}, v24",
+                ".option pop",
+                a = inout(reg) pa, b = inout(reg) pb, n = inout(reg) n, vl = out(reg) _,
+                t = out(reg) _, r = out(reg) r
+            );
+        }
+        let _ = (pa, pb, n);
+        f32::from_bits(r)
+    }
+
+    /// `out[i] = a * q[i] + b`, `q[i]` an unsigned 16-bit integer: widened
+    /// exactly (`vfwcvt.f.xu.v`), then multiplied and added with two roundings,
+    /// as the portable code does.
+    ///
+    /// # Panics
+    /// If `q.len() != out.len()`.
+    pub fn affine_u16_f32(self, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+        assert_eq!(q.len(), out.len());
+        let (mut pq, mut po, mut n) = (q.as_ptr(), out.as_mut_ptr(), q.len());
+        if n == 0 {
+            return;
+        }
+        // SAFETY: token proves V; reads `n` u16, writes `n` f32.
+        unsafe {
+            rvv_asm!(
+                ".option push",
+                ".option arch, +v",
+                "vsetvli {t}, zero, e32, m4, ta, ma",
+                "vmv.v.x v24, {a}",
+                "vmv.v.x v28, {b}",
+                "2:",
+                "vsetvli {vl}, {n}, e16, m2, ta, ma",
+                "vle16.v v8, ({q})",
+                "vfwcvt.f.xu.v v16, v8",
+                // Same SEW/LMUL ratio, so `vl` stays.
+                "vsetvli zero, zero, e32, m4, ta, ma",
+                "vfmul.vv v16, v16, v24",
+                "vfadd.vv v16, v16, v28",
+                "vse32.v v16, ({o})",
+                "sub {n}, {n}, {vl}",
+                "slli {t}, {vl}, 1",
+                "add {q}, {q}, {t}",
+                "slli {t}, {vl}, 2",
+                "add {o}, {o}, {t}",
+                "bnez {n}, 2b",
+                ".option pop",
+                q = inout(reg) pq, o = inout(reg) po, n = inout(reg) n, a = in(reg) a.to_bits(),
+                b = in(reg) b.to_bits(), vl = out(reg) _, t = out(reg) _
+            );
+        }
+        let _ = (pq, po, n);
+    }
+
+    /// `out[i] = sum_k(signal[i + k] * taps[k])`, same contract as
+    /// `x86::reduce::sliding_dot_f32`: strip-mined across the outputs, each
+    /// tap broadcast and fused into the whole strip (`vfmacc.vv`), k ascending.
+    /// NaN and inf propagate.
+    ///
+    /// # Panics
+    /// If `out` is not empty and `signal.len() + 1 < out.len() + taps.len()`.
+    pub fn sliding_dot_f32(self, signal: &[f32], taps: &[f32], out: &mut [f32]) {
+        crate::reduce_common::sliding_check(signal, taps, out);
+        let (mut ps, mut po, mut n) = (signal.as_ptr(), out.as_mut_ptr(), out.len());
+        if n == 0 {
+            return;
+        }
+        // SAFETY: token proves V; `sliding_check` keeps `signal[i..i + taps.len()]`
+        // in bounds for every `i < n`; writes `n` f32 and reads `taps.len()` taps.
+        unsafe {
+            rvv_asm!(
+                ".option push",
+                ".option arch, +v",
+                "2:",
+                "vsetvli {vl}, {n}, e32, m4, ta, ma",
+                "vmv.v.i v8, 0",
+                "mv {s}, {ps}",
+                "mv {tp}, {taps}",
+                "mv {k}, {nt}",
+                "beqz {k}, 4f",
+                "3:",
+                "lw {t}, 0({tp})",
+                "vle32.v v16, ({s})",
+                "vmv.v.x v20, {t}",
+                "vfmacc.vv v8, v20, v16",
+                "addi {s}, {s}, 4",
+                "addi {tp}, {tp}, 4",
+                "addi {k}, {k}, -1",
+                "bnez {k}, 3b",
+                "4:",
+                "vse32.v v8, ({o})",
+                "sub {n}, {n}, {vl}",
+                "slli {t}, {vl}, 2",
+                "add {ps}, {ps}, {t}",
+                "add {o}, {o}, {t}",
+                "bnez {n}, 2b",
+                ".option pop",
+                ps = inout(reg) ps, o = inout(reg) po, n = inout(reg) n,
+                taps = in(reg) taps.as_ptr(), nt = in(reg) taps.len(), vl = out(reg) _,
+                s = out(reg) _, tp = out(reg) _, k = out(reg) _, t = out(reg) _
+            );
+        }
+        let _ = (ps, po, n);
     }
 }
 

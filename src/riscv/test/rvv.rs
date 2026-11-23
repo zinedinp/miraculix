@@ -134,3 +134,58 @@ fn v_is_detected_where_expected() {
         );
     }
 }
+
+/// Quarters in `-8..=8`, no NaN: every product and sum here is exact in `f32`.
+fn grid(n: usize, seed: u32) -> Vec<f32> {
+    let mut s = seed | 1;
+    (0..n)
+        .map(|_| {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            ((s % 65) as f32 - 32.0) * 0.25
+        })
+        .collect()
+}
+
+#[test]
+fn sliding_dot_is_the_definition() {
+    let Some(t) = Rvv::detect() else { return };
+    for taps_len in [0, 1, 3, 64, 65] {
+        for n in lengths() {
+            let taps = grid(taps_len, 3 + taps_len as u32);
+            let signal = grid(n + taps_len.saturating_sub(1), n as u32);
+            let mut out = vec![f32::NAN; n];
+            t.sliding_dot_f32(&signal, &taps, &mut out);
+            for (i, &got) in out.iter().enumerate() {
+                let want: f64 = taps
+                    .iter()
+                    .enumerate()
+                    .map(|(k, &c)| signal[i + k] as f64 * c as f64)
+                    .sum();
+                assert_eq!(got, want as f32, "taps {taps_len} n {n} i {i}");
+            }
+        }
+    }
+}
+
+#[test]
+fn dot_and_affine_match_the_portable_code() {
+    let Some(t) = Rvv::detect() else { return };
+    for n in lengths() {
+        let (a, b) = (grid(n, n as u32), grid(n, 7 + n as u32));
+        let want: f64 = a.iter().zip(&b).map(|(&x, &y)| x as f64 * y as f64).sum();
+        assert_eq!(t.dot_f32(&a, &b), want as f32, "dot {n}");
+        let q: Vec<u16> = (0..n).map(|i| (i as u16).wrapping_mul(40503)).collect();
+        let mut out = vec![0.0; n];
+        t.affine_u16_f32(&q, 0.37, -5.5, &mut out);
+        for (i, (&x, &got)) in q.iter().zip(&out).enumerate() {
+            assert_eq!(
+                got.to_bits(),
+                (0.37f32 * x as f32 + -5.5).to_bits(),
+                "affine {n} {i}"
+            );
+        }
+    }
+    assert_eq!(t.dot_f32(&[], &[]), 0.0);
+}
