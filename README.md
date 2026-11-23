@@ -469,6 +469,13 @@ lowest index.
 | `exp` with a stated error | `x86::reduce::exp_f32`, `aarch64::reduce::exp_f32` (relative error <= 3e-7, worst measured 1.2e-7; no RISC-V yet) |
 | bfloat16 -> `f32` slice | `x86::reduce::bf16_to_f32`, `aarch64::reduce::bf16_to_f32`, `riscv::auto::bf16_to_f32` (also `formats::MiniFloat::Bf16`) |
 
+**Prefetch hints** live in `miraculix::prefetch` (any architecture, no token,
+safe: a prefetch never faults): `read(p, Locality::L1)`, `write(p, ..)`,
+`instruction(p)`. x86 `prefetcht0`/`t1`/`t2`/`nta` and `prefetchw` (PRFCHW,
+detected), aarch64 `prfm`, arm `pld`/`pli` (with `nightly-arm-neon`), RISC-V Zicbop (`ori x0` hints, no
+detection needed), LoongArch64 `preld`, PowerPC `dcbt`/`dcbtst`; elsewhere
+no-ops.
+
 **Number formats** live in `miraculix::formats` (any architecture, no token):
 FP8 / FP6 / FP4 / FP16 / BF16 (`MiniFloat`), OCP MX and NVFP4 (`mx`, block size
 is a parameter via `*_block`), packed INT1/2/4 (`int`), TF32, Tenstorrent
@@ -501,6 +508,7 @@ order there.
 | `phi-asm` | off | Xeon Phi 4FMAPS / 4VNNIW / ER / PF ops |
 | `nightly-altivec` | off | Power AltiVec via nightly stdarch |
 | `nightly-rtm` | off | x86 RTM via nightly stdarch |
+| `nightly-powerpc-asm` | off | `prefetch` on PowerPC (`dcbt`/`dcbtst` need unstable `asm!` there); without it the hints are no-ops |
 | `wasm-simd` | on | wasm: compile `wasm::ops` / `wasm::auto` (simd128). Turn off (`default-features = false`) for a module that must load on engines without simd128; detection stays |
 | `wasm-relaxed-simd` | off | Compile wasm relaxed-simd bodies (`wasm::ops::relaxed`, top `fmadd` rung). Off because engines without relaxed-simd reject the whole module |
 

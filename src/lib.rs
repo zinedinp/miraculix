@@ -101,6 +101,13 @@
 )]
 #![cfg_attr(feature = "nightly-rtm", feature(stdarch_x86_rtm, rtm_target_feature))]
 #![cfg_attr(
+    all(
+        feature = "nightly-powerpc-asm",
+        any(target_arch = "powerpc", target_arch = "powerpc64")
+    ),
+    feature(asm_experimental_arch)
+)]
+#![cfg_attr(
     all(feature = "nightly-arm-neon", target_arch = "arm"),
     feature(
         stdarch_arm_dsp,
@@ -154,6 +161,9 @@ pub mod formats;
 
 /// Copies into and out of write-combining memory (PCIe BARs of accelerator cards).
 pub mod mmio;
+
+/// Cache prefetch hints (read, write, instruction) on every architecture that has them.
+pub mod prefetch;
 
 /// x86 / x86_64: detect tiers and features, auto slice ops, tokens, kernel macros.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

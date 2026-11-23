@@ -103,6 +103,15 @@ stdarch has no wasm f16 intrinsics (stable or nightly).
 |---|---|---|
 | AltiVec | **nightly** (`nightly-altivec`) | `stdarch_powerpc` + `powerpc_target_feature`. |
 
+## `prefetch`
+
+| Target | Min `rustc` | Notes |
+|---|---|---|
+| x86 / x86_64 | 1.27.0 | `_mm_prefetch` (`simd_x86`); `prefetchw` through `asm!`, gated on `Feature::Prfchw`. |
+| aarch64, riscv, loongarch64 | `asm!` | No stable prefetch intrinsics there (`_prefetch` is unstable). |
+| arm | **nightly** (`nightly-arm-neon`) | `asm!`, but `pld`/`pli` depend on the ARM version, which only `arm_target_feature` reports; without it the hints are no-ops. |
+| powerpc / powerpc64 | **nightly** (`nightly-powerpc-asm`) | `asm_experimental_arch`; without it the hints are no-ops. |
+
 ## Adding a new extension
 
 1. Grep each intrinsic against `core_arch` `#[stable(since = ...)]` / `#[unstable]`.

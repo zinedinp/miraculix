@@ -1,6 +1,6 @@
 [package]
 name = "miraculix"
-version = "0.6.0-beta"
+version = "0.6.1-beta"
 authors = ["Zinedin Polic"]
 edition = "2024"
 rust-version = "1.100.0"
@@ -21,6 +21,10 @@ nightly-altivec = []
 # target-feature (rtm_target_feature) are both unstable; opt in only on a
 # nightly toolchain.
 nightly-rtm = []
+# `prefetch` on PowerPC: `asm!` there (`dcbt`/`dcbtst`) is unstable
+# (asm_experimental_arch); opt in only on a nightly toolchain. Without it the
+# hints do nothing there.
+nightly-powerpc-asm = []
 # core::arch::arm's DSP/SIMD32 intrinsics (stdarch_arm_dsp) and Neon
 # intrinsics (stdarch_arm_neon_intrinsics), plus the "dsp"/"neon"
 # target-features (arm_target_feature), are all unstable; opt in only on a

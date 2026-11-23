@@ -131,6 +131,9 @@ pub fn compile_time_features() -> FeatureSet {
     if cfg!(target_feature = "popcnt") {
         set = set.with(Feature::Popcnt);
     }
+    if cfg!(target_feature = "prfchw") {
+        set = set.with(Feature::Prfchw);
+    }
     if cfg!(target_feature = "sse3") {
         set = set.with(Feature::Sse3);
     }

@@ -147,6 +147,9 @@ pub enum Feature {
 	/// ~2024, Sierra Forest/Granite Rapids era. Leaf `7` subleaf `1` `EAX`
 	/// bit 2; `raw-cpuid` doesn't parse it, read directly (see `supports`).
 	Sm4,
+	/// `prefetchw`: AMD K6-2 (3DNow!), 1998; Intel Broadwell, 2014. Leaf
+	/// `0x80000001` `ECX` bit 8. Last in [`Feature::ALL`], so older bits keep their place.
+	Prfchw,
 }
 
 impl Feature {
@@ -169,7 +172,7 @@ impl Feature {
 		Feature::AvxVnni, Feature::Avx512fp16, Feature::AmxTile, Feature::AmxInt8,
 		Feature::AmxBf16, Feature::AvxIfma, Feature::AvxNeConvert,
 		Feature::AvxVnniInt8, Feature::AvxVnniInt16, Feature::Avx10,
-		Feature::Sha512, Feature::Sm3, Feature::Sm4,
+		Feature::Sha512, Feature::Sm3, Feature::Sm4, Feature::Prfchw,
 	];
 
     /// Bit index inside a [`super::FeatureSet`].
@@ -447,6 +450,10 @@ impl CpuidLeaves {
             Feature::Sha512 => self.sha_sm_leaf_eax & (1 << 0) != 0,
             Feature::Sm3 => self.sha_sm_leaf_eax & (1 << 1) != 0,
             Feature::Sm4 => self.sha_sm_leaf_eax & (1 << 2) != 0,
+            Feature::Prfchw => self
+                .extended_processor
+                .as_ref()
+                .is_some_and(ExtendedProcessorFeatureIdentifiers::has_prefetchw),
         }
     }
 }
