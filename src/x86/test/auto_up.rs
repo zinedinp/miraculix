@@ -1437,6 +1437,12 @@ fn p4dpwssd_i32_panics_on_length_mismatch() {
     assert!(result.is_err());
 }
 
+type Ternary<T> = fn(&[T], &[T], &[T], &mut [T]);
+type TernaryKernel<T> = unsafe fn(&[T], &[T], &[T], &mut [T]) -> usize;
+type Scalar3<T> = fn(T, T, T) -> T;
+type P4 = fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]);
+type P4Kernel = unsafe fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]) -> usize;
+
 /// The rungs below `Fma` (AVX, SSE) round the product first, as the scalar
 /// fallback does, so they must equal it bit for bit, whichever one this CPU runs.
 #[test]
@@ -1446,17 +1452,13 @@ fn the_multiply_add_family_below_fma_matches_scalar() {
         let a: Vec<f32> = (0..len).map(|i| i as f32 * 0.3 - 2.0).collect();
         let b: Vec<f32> = (0..len).map(|i| 1.7 - i as f32 * 0.11).collect();
         let c: Vec<f32> = (0..len).map(|i| (i % 5) as f32 * 0.9 - 1.3).collect();
-        let ops: [(
-            fn(&[f32], &[f32], &[f32], &mut [f32]),
-            fn(f32, f32, f32) -> f32,
-        ); 4] = [
+        let ops: [(Ternary<f32>, Scalar3<f32>); 4] = [
             (auto_down::fmadd_f32, |x, y, z| x * y + z),
             (auto_down::fmsub_f32, |x, y, z| x * y - z),
             (auto_down::fnmadd_f32, |x, y, z| -(x * y) + z),
             (auto_down::fnmsub_f32, |x, y, z| -(x * y) - z),
         ];
-        type Kernel = unsafe fn(&[f32], &[f32], &[f32], &mut [f32]) -> usize;
-        let kernels: [[Kernel; 2]; 4] = [
+        let kernels: [[TernaryKernel<f32>; 2]; 4] = [
             [auto_down::fmadd_f32_sse, auto_down::fmadd_f32_avx],
             [auto_down::fmsub_f32_sse, auto_down::fmsub_f32_avx],
             [auto_down::fnmadd_f32_sse, auto_down::fnmadd_f32_avx],
@@ -1489,17 +1491,13 @@ fn the_multiply_add_family_below_fma_matches_scalar() {
             b.iter().map(|&x| x as f64).collect(),
             c.iter().map(|&x| x as f64).collect(),
         );
-        let ops: [(
-            fn(&[f64], &[f64], &[f64], &mut [f64]),
-            fn(f64, f64, f64) -> f64,
-        ); 4] = [
+        let ops: [(Ternary<f64>, Scalar3<f64>); 4] = [
             (auto_down::fmadd_f64, |x, y, z| x * y + z),
             (auto_down::fmsub_f64, |x, y, z| x * y - z),
             (auto_down::fnmadd_f64, |x, y, z| -(x * y) + z),
             (auto_down::fnmsub_f64, |x, y, z| -(x * y) - z),
         ];
-        type Kernel64 = unsafe fn(&[f64], &[f64], &[f64], &mut [f64]) -> usize;
-        let kernels: [[Kernel64; 2]; 4] = [
+        let kernels: [[TernaryKernel<f64>; 2]; 4] = [
             [auto_down::fmadd_f64_sse, auto_down::fmadd_f64_avx],
             [auto_down::fmsub_f64_sse, auto_down::fmsub_f64_avx],
             [auto_down::fnmadd_f64_sse, auto_down::fnmadd_f64_avx],
@@ -1546,12 +1544,7 @@ fn p4_multiply_add_below_avx512_matches_scalar() {
             .collect();
         let b = [&bs[0][..], &bs[1][..], &bs[2][..], &bs[3][..]];
         let c = [0.5f32, -1.25, 3.0, 0.1];
-        type Kernel = unsafe fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]) -> usize;
-        let rungs: [(
-            f32,
-            fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]),
-            [Kernel; 2],
-        ); 2] = [
+        let rungs: [(f32, P4, [P4Kernel; 2]); 2] = [
             (
                 1.0,
                 auto_down::p4fmadd_f32,
@@ -1572,9 +1565,7 @@ fn p4_multiply_add_below_avx512_matches_scalar() {
                 // SAFETY: the rung's feature is present (checked above).
                 let done = unsafe { kernel(&a, b, c, &mut out) };
                 assert_eq!(done, len - len % [4, 8][rung]);
-                for i in done..len {
-                    out[i] = outs[0][i];
-                }
+                out[done..].copy_from_slice(&outs[0][done..]);
                 outs.push(out);
             }
             for out in outs {
