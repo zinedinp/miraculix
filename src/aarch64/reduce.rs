@@ -41,7 +41,11 @@ pub fn bf16_to_f32_with(neon: bool, a: &[u16], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
     // SAFETY (all `unsafe` here): `neon` is true only when Neon was detected;
     // pointers stay inside the slices.
-    let done = if neon { unsafe { bf16_neon(a, out) } } else { 0 };
+    let done = if neon {
+        unsafe { bf16_neon(a, out) }
+    } else {
+        0
+    };
     for i in done..a.len() {
         out[i] = f32::from_bits((a[i] as u32) << 16);
     }
@@ -53,8 +57,14 @@ unsafe fn bf16_neon(a: &[u16], out: &mut [f32]) -> usize {
     unsafe {
         while i + 8 <= a.len() {
             let v = vld1q_u16(a.as_ptr().add(i));
-            vst1q_u32(out.as_mut_ptr().add(i) as *mut u32, vshll_n_u16::<16>(vget_low_u16(v)));
-            vst1q_u32(out.as_mut_ptr().add(i + 4) as *mut u32, vshll_high_n_u16::<16>(v));
+            vst1q_u32(
+                out.as_mut_ptr().add(i) as *mut u32,
+                vshll_n_u16::<16>(vget_low_u16(v)),
+            );
+            vst1q_u32(
+                out.as_mut_ptr().add(i + 4) as *mut u32,
+                vshll_high_n_u16::<16>(v),
+            );
             i += 8;
         }
     }
@@ -71,7 +81,11 @@ pub fn reduce_sum_f32(a: &[f32]) -> f32 {
 #[doc(hidden)]
 pub fn reduce_sum_f32_with(neon: bool, a: &[f32]) -> f32 {
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut s, done) = if neon { unsafe { sum_neon(a) } } else { (0.0, 0) };
+    let (mut s, done) = if neon {
+        unsafe { sum_neon(a) }
+    } else {
+        (0.0, 0)
+    };
     let mut lanes = [0f32; 4];
     for (i, &x) in a[done..].iter().enumerate() {
         lanes[i % 4] += x;
@@ -139,7 +153,11 @@ pub fn reduce_min_f32(a: &[f32]) -> f32 {
 #[doc(hidden)]
 pub fn reduce_max_f32_with(neon: bool, a: &[f32]) -> f32 {
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut m, done) = if neon { unsafe { max_neon(a) } } else { (f32::NEG_INFINITY, 0) };
+    let (mut m, done) = if neon {
+        unsafe { max_neon(a) }
+    } else {
+        (f32::NEG_INFINITY, 0)
+    };
     for &x in &a[done..] {
         if x > m {
             m = x;
@@ -151,7 +169,11 @@ pub fn reduce_max_f32_with(neon: bool, a: &[f32]) -> f32 {
 #[doc(hidden)]
 pub fn reduce_min_f32_with(neon: bool, a: &[f32]) -> f32 {
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut m, done) = if neon { unsafe { min_neon(a) } } else { (f32::INFINITY, 0) };
+    let (mut m, done) = if neon {
+        unsafe { min_neon(a) }
+    } else {
+        (f32::INFINITY, 0)
+    };
     for &x in &a[done..] {
         if x < m {
             m = x;
@@ -172,11 +194,18 @@ pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
 pub fn argmax_f32_with(neon: bool, a: &[f32]) -> Option<(usize, f32)> {
     let m = reduce_max_f32_with(neon, a);
     // SAFETY: see `bf16_to_f32_with`.
-    let start = match if neon { unsafe { find_neon(a, m) } } else { Ok(0) } {
+    let start = match if neon {
+        unsafe { find_neon(a, m) }
+    } else {
+        Ok(0)
+    } {
         Ok(s) => s,
         Err(i) => return Some((i, m)),
     };
-    a[start..].iter().position(|&x| x == m).map(|p| (p + start, m))
+    a[start..]
+        .iter()
+        .position(|&x| x == m)
+        .map(|p| (p + start, m))
 }
 
 /// `Err(index)` when found, `Ok(first_unscanned)` otherwise.
@@ -242,7 +271,11 @@ unsafe fn exp_neon(a: &[f32], out: &mut [f32]) -> usize {
             let s2 = vreinterpretq_f32_s32(vshlq_n_s32::<23>(vaddq_s32(vsubq_s32(n, n1), b)));
             let mut res = vmulq_f32(vmulq_f32(z, s1), s2);
             res = vbslq_f32(vcltq_f32(x, vdupq_n_f32(EXP_LO)), vdupq_n_f32(0.0), res);
-            res = vbslq_f32(vcgtq_f32(x, vdupq_n_f32(EXP_HI)), vdupq_n_f32(f32::INFINITY), res);
+            res = vbslq_f32(
+                vcgtq_f32(x, vdupq_n_f32(EXP_HI)),
+                vdupq_n_f32(f32::INFINITY),
+                res,
+            );
             // NaN lanes compare false on `x == x`.
             res = vbslq_f32(vceqq_f32(x, x), res, x);
             vst1q_f32(out.as_mut_ptr().add(i), res);
@@ -268,7 +301,11 @@ pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
 pub fn affine_u16_f32_with(neon: bool, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
     assert_eq!(q.len(), out.len());
     // SAFETY: see `bf16_to_f32_with`.
-    let done = if neon { unsafe { affine_neon(q, a, b, out) } } else { 0 };
+    let done = if neon {
+        unsafe { affine_neon(q, a, b, out) }
+    } else {
+        0
+    };
     for i in done..q.len() {
         out[i] = a * (q[i] as f32) + b;
     }
@@ -304,13 +341,71 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
 pub fn dot_f32_with(neon: bool, a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut s, done) = if neon { unsafe { dot_neon(a, b) } } else { (0.0, 0) };
+    let (mut s, done) = if neon {
+        unsafe { dot_neon(a, b) }
+    } else {
+        (0.0, 0)
+    };
     let mut lanes = [0f32; 4];
     for i in done..a.len() {
         lanes[i % 4] += a[i] * b[i];
     }
     s += (lanes[0] + lanes[1]) + (lanes[2] + lanes[3]);
     s
+}
+
+/// `out[i] = sum_k(signal[i + k] * taps[k])` for every `i < out.len()`: an FIR
+/// filter with its taps in reverse order, or a cross-correlation. Same
+/// contract as `x86::reduce::sliding_dot_f32`: vectorised across the outputs
+/// (eight NEON accumulators, fused), k ascending, the scalar tail
+/// (`out.len() % 4`) rounds each product. NaN and inf propagate.
+///
+/// # Panics
+/// If `out` is not empty and `signal.len() + 1 < out.len() + taps.len()`.
+pub fn sliding_dot_f32(signal: &[f32], taps: &[f32], out: &mut [f32]) {
+    sliding_dot_f32_with(hw(), signal, taps, out)
+}
+
+#[doc(hidden)]
+pub fn sliding_dot_f32_with(neon: bool, signal: &[f32], taps: &[f32], out: &mut [f32]) {
+    crate::reduce_common::sliding_check(signal, taps, out);
+    // SAFETY: see `bf16_to_f32_with`; `sliding_check` keeps every window in bounds.
+    let done = if neon {
+        unsafe { sliding_neon(signal, taps, out) }
+    } else {
+        0
+    };
+    crate::reduce_common::sliding_scalar(signal, taps, &mut out[done..], done);
+}
+
+/// Whole vectors of outputs; returns how many it wrote.
+#[target_feature(enable = "neon")]
+unsafe fn sliding_neon(signal: &[f32], taps: &[f32], out: &mut [f32]) -> usize {
+    unsafe {
+        let (s, n) = (signal.as_ptr(), out.len());
+        let mut i = 0;
+        while i + 32 <= n {
+            let mut acc = [vdupq_n_f32(0.0); 8];
+            for (k, &t) in taps.iter().enumerate() {
+                for (r, ac) in acc.iter_mut().enumerate() {
+                    *ac = vfmaq_n_f32(*ac, vld1q_f32(s.add(i + k + 4 * r)), t);
+                }
+            }
+            for (r, ac) in acc.iter().enumerate() {
+                vst1q_f32(out.as_mut_ptr().add(i + 4 * r), *ac);
+            }
+            i += 32;
+        }
+        while i + 4 <= n {
+            let mut ac = vdupq_n_f32(0.0);
+            for (k, &t) in taps.iter().enumerate() {
+                ac = vfmaq_n_f32(ac, vld1q_f32(s.add(i + k)), t);
+            }
+            vst1q_f32(out.as_mut_ptr().add(i), ac);
+            i += 4;
+        }
+        i
+    }
 }
 
 #[target_feature(enable = "neon")]
@@ -321,12 +416,20 @@ unsafe fn dot_neon(a: &[f32], b: &[f32]) -> (f32, usize) {
         while i + 16 <= a.len() {
             for (k, ac) in acc.iter_mut().enumerate() {
                 let o = i + 4 * k;
-                *ac = vfmaq_f32(*ac, vld1q_f32(a.as_ptr().add(o)), vld1q_f32(b.as_ptr().add(o)));
+                *ac = vfmaq_f32(
+                    *ac,
+                    vld1q_f32(a.as_ptr().add(o)),
+                    vld1q_f32(b.as_ptr().add(o)),
+                );
             }
             i += 16;
         }
         while i + 4 <= a.len() {
-            acc[0] = vfmaq_f32(acc[0], vld1q_f32(a.as_ptr().add(i)), vld1q_f32(b.as_ptr().add(i)));
+            acc[0] = vfmaq_f32(
+                acc[0],
+                vld1q_f32(a.as_ptr().add(i)),
+                vld1q_f32(b.as_ptr().add(i)),
+            );
             i += 4;
         }
         let t = vaddq_f32(vaddq_f32(acc[0], acc[1]), vaddq_f32(acc[2], acc[3]));
@@ -379,7 +482,13 @@ pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR
 }
 
 #[doc(hidden)]
-pub fn gemm_f32_kernel_with(neon: bool, kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+pub fn gemm_f32_kernel_with(
+    neon: bool,
+    kc: usize,
+    a: &[f32],
+    b: &[f32],
+    acc: &mut [[f32; GEMM_NR]; GEMM_MR],
+) {
     crate::reduce_common::gemm_check(kc, a, b);
     if neon {
         // SAFETY: Neon detected; lengths checked above.
@@ -392,7 +501,12 @@ pub fn gemm_f32_kernel_with(neon: bool, kc: usize, a: &[f32], b: &[f32], acc: &m
 /// # Safety
 /// Neon present; `a`/`b` valid for `kc*MR` / `kc*NR` floats.
 #[target_feature(enable = "neon")]
-unsafe fn gemm_kernel_neon(kc: usize, a: *const f32, b: *const f32, acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+unsafe fn gemm_kernel_neon(
+    kc: usize,
+    a: *const f32,
+    b: *const f32,
+    acc: &mut [[f32; GEMM_NR]; GEMM_MR],
+) {
     unsafe {
         for c0 in [0usize, 8, 16, 24] {
             let mut c = [[vdupq_n_f32(0.0); 2]; GEMM_MR];
@@ -433,7 +547,11 @@ pub fn compress_gt_f32(a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
 pub fn compress_gt_f32_with(neon: bool, a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
     assert!(out.len() >= a.len(), "out must hold a.len() indices");
     // SAFETY: see `bf16_to_f32_with`; writes stay below `a.len() <= out.len()`.
-    let (mut n, done) = if neon { unsafe { compress_neon(a, threshold, out) } } else { (0, 0) };
+    let (mut n, done) = if neon {
+        unsafe { compress_neon(a, threshold, out) }
+    } else {
+        (0, 0)
+    };
     for (j, &x) in a[done..].iter().enumerate() {
         if x > threshold {
             out[n] = (done + j) as u32;

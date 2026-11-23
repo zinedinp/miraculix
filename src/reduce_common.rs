@@ -1,6 +1,6 @@
 //! Arch-neutral pieces shared by the per-architecture slice reductions
 //! (`x86::reduce`, `aarch64::reduce`, `riscv::auto`): the top-k driver and
-//! the scalar `exp` with its constants.
+//! the scalar `exp` with its constants, the GEMM and sliding-dot scalar paths.
 //!
 //! Top-k driver. Each architecture supplies a `compress` kernel
 //! (indices of elements greater than a threshold) and this does the rest.
@@ -108,7 +108,6 @@ pub(crate) fn round_ties_even(x: f32) -> f32 {
     (x + M) - M
 }
 
-
 // ---- logsumexp / log_softmax driver ----
 
 /// Natural logarithm in `f64` (`no_std`, no `libm`): `x = m * 2^e` with
@@ -125,7 +124,11 @@ pub(crate) fn ln_f64(x: f64) -> f64 {
         return x;
     }
     // Bring subnormals into the normal range.
-    let (x, adj) = if x < f64::MIN_POSITIVE { (x * 18_014_398_509_481_984.0, -54i64) } else { (x, 0) };
+    let (x, adj) = if x < f64::MIN_POSITIVE {
+        (x * 18_014_398_509_481_984.0, -54i64)
+    } else {
+        (x, 0)
+    };
     let bits = x.to_bits();
     let mut e = ((bits >> 52) & 0x7ff) as i64 - 1023 + adj;
     let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
@@ -160,7 +163,11 @@ pub(crate) fn logsumexp_with(
     let m = max(a);
     if m == f32::NEG_INFINITY || m == f32::INFINITY {
         // All -inf / empty -> -inf; a +inf element -> +inf (NaN stays NaN if any).
-        return if a.iter().any(|x| x.is_nan()) { f32::NAN } else { m };
+        return if a.iter().any(|x| x.is_nan()) {
+            f32::NAN
+        } else {
+            m
+        };
     }
     let mut buf = [0f32; LSE_BLOCK];
     let mut total = 0f64;
@@ -186,13 +193,28 @@ pub const GEMM_NR: usize = 32;
 /// Checks the slice lengths of `gemm_f32_kernel`.
 #[inline]
 pub(crate) fn gemm_check(kc: usize, a: &[f32], b: &[f32]) {
-    assert!(a.len() >= kc * GEMM_MR, "gemm_f32_kernel: A panel {} < kc*MR = {}", a.len(), kc * GEMM_MR);
-    assert!(b.len() >= kc * GEMM_NR, "gemm_f32_kernel: B panel {} < kc*NR = {}", b.len(), kc * GEMM_NR);
+    assert!(
+        a.len() >= kc * GEMM_MR,
+        "gemm_f32_kernel: A panel {} < kc*MR = {}",
+        a.len(),
+        kc * GEMM_MR
+    );
+    assert!(
+        b.len() >= kc * GEMM_NR,
+        "gemm_f32_kernel: B panel {} < kc*NR = {}",
+        b.len(),
+        kc * GEMM_NR
+    );
 }
 
 /// Portable `gemm_f32_kernel`: `acc[i][j] += a[k][i] * b[k][j]`, k ascending,
 /// product and sum rounded separately.
-pub(crate) fn gemm_kernel_scalar(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+pub(crate) fn gemm_kernel_scalar(
+    kc: usize,
+    a: &[f32],
+    b: &[f32],
+    acc: &mut [[f32; GEMM_NR]; GEMM_MR],
+) {
     for k in 0..kc {
         let (ak, bk) = (&a[k * GEMM_MR..][..GEMM_MR], &b[k * GEMM_NR..][..GEMM_NR]);
         for (row, &ai) in acc.iter_mut().zip(ak) {
@@ -200,5 +222,34 @@ pub(crate) fn gemm_kernel_scalar(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f3
                 *c += ai * bj;
             }
         }
+    }
+}
+
+// ------------------------------------------------------------- sliding dot
+
+/// Checks the slice lengths of `sliding_dot_f32`: every window
+/// `signal[i..i + taps.len()]` with `i < out.len()` is in bounds.
+#[inline]
+pub(crate) fn sliding_check(signal: &[f32], taps: &[f32], out: &[f32]) {
+    assert!(
+        out.is_empty() || signal.len() + 1 >= out.len() + taps.len(),
+        "sliding_dot_f32: signal {} < out {} + taps {} - 1",
+        signal.len(),
+        out.len(),
+        taps.len()
+    );
+}
+
+/// Portable `sliding_dot_f32` for the outputs from `first` on (`out` is
+/// `out[first..]` of the whole call): k ascending, product and sum rounded
+/// separately.
+pub(crate) fn sliding_scalar(signal: &[f32], taps: &[f32], out: &mut [f32], first: usize) {
+    for (i, o) in out.iter_mut().enumerate() {
+        let window = &signal[first + i..][..taps.len()];
+        let mut acc = 0.0;
+        for (&x, &t) in window.iter().zip(taps) {
+            acc += x * t;
+        }
+        *o = acc;
     }
 }

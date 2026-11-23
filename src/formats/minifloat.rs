@@ -154,7 +154,11 @@ impl MiniFloat {
         match kind {
             Kind::Ieee if exp == all_ones => {
                 return if man == 0 {
-                    if neg { f32::NEG_INFINITY } else { f32::INFINITY }
+                    if neg {
+                        f32::NEG_INFINITY
+                    } else {
+                        f32::INFINITY
+                    }
                 } else {
                     f32::NAN
                 };
@@ -263,7 +267,10 @@ impl MiniFloat {
     #[cfg(target_arch = "aarch64")]
     fn arm_fp8(
         self,
-    ) -> Option<(crate::aarch64::ops::neon::fp8::Fp8, crate::aarch64::ops::neon::fp8::Fp8Format)> {
+    ) -> Option<(
+        crate::aarch64::ops::neon::fp8::Fp8,
+        crate::aarch64::ops::neon::fp8::Fp8Format,
+    )> {
         use crate::aarch64::ops::neon::fp8::{Fp8, Fp8Format};
         let hw = match self {
             MiniFloat::E4M3Fn => Fp8Format::E4m3,
@@ -287,8 +294,14 @@ impl MiniFloat {
             return;
         }
         match self.lut_u8() {
-            Some(t) => dst.iter_mut().zip(src).for_each(|(d, &s)| *d = t[s as usize]),
-            None => dst.iter_mut().zip(src).for_each(|(d, &s)| *d = self.decode(s as u32)),
+            Some(t) => dst
+                .iter_mut()
+                .zip(src)
+                .for_each(|(d, &s)| *d = t[s as usize]),
+            None => dst
+                .iter_mut()
+                .zip(src)
+                .for_each(|(d, &s)| *d = self.decode(s as u32)),
         }
     }
 
@@ -304,7 +317,9 @@ impl MiniFloat {
             t.f32_to_fp8_slice(hw, overflow == Overflow::Saturate, src, dst);
             return;
         }
-        dst.iter_mut().zip(src).for_each(|(d, &s)| *d = self.encode(s, overflow) as u8);
+        dst.iter_mut()
+            .zip(src)
+            .for_each(|(d, &s)| *d = self.encode(s, overflow) as u8);
     }
 
     /// Decodes 16-bit codes ([`F16`](Self::F16) / [`Bf16`](Self::Bf16)).
@@ -335,7 +350,9 @@ impl MiniFloat {
                 return;
             }
             #[allow(unreachable_code)]
-            dst.iter_mut().zip(src).for_each(|(d, &s)| *d = f32::from_bits((s as u32) << 16));
+            dst.iter_mut()
+                .zip(src)
+                .for_each(|(d, &s)| *d = f32::from_bits((s as u32) << 16));
             return;
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -353,7 +370,9 @@ impl MiniFloat {
             t.cvt_f16_to_f32_slice(src, dst);
             return;
         }
-        dst.iter_mut().zip(src).for_each(|(d, &s)| *d = self.decode(s as u32));
+        dst.iter_mut()
+            .zip(src)
+            .for_each(|(d, &s)| *d = self.decode(s as u32));
     }
 
     /// Encodes to 16-bit codes ([`F16`](Self::F16) / [`Bf16`](Self::Bf16)).
@@ -376,7 +395,9 @@ impl MiniFloat {
                     return;
                 }
             }
-            dst.iter_mut().zip(src).for_each(|(d, &s)| *d = bf16_fast(s, overflow));
+            dst.iter_mut()
+                .zip(src)
+                .for_each(|(d, &s)| *d = bf16_fast(s, overflow));
             return;
         }
         if overflow == Overflow::Special {
@@ -396,7 +417,9 @@ impl MiniFloat {
                 return;
             }
         }
-        dst.iter_mut().zip(src).for_each(|(d, &s)| *d = self.encode(s, overflow) as u16);
+        dst.iter_mut()
+            .zip(src)
+            .for_each(|(d, &s)| *d = self.encode(s, overflow) as u16);
     }
 }
 

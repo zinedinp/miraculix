@@ -112,8 +112,10 @@ impl Zvfbfwma {
 
     /// From a raw feature bitset.
     pub fn from_features(set: FeatureSet) -> Option<Self> {
-        (set.contains(Feature::V) && set.contains(Feature::Zvfbfmin) && set.contains(Feature::Zvfbfwma))
-            .then_some(Zvfbfwma(()))
+        (set.contains(Feature::V)
+            && set.contains(Feature::Zvfbfmin)
+            && set.contains(Feature::Zvfbfwma))
+        .then_some(Zvfbfwma(()))
     }
 
     /// `out[i] = acc[i] + a[i] * b[i]` with BF16 `a`, `b` and `f32` `acc`/`out`
@@ -123,8 +125,13 @@ impl Zvfbfwma {
     /// If the four slices differ in length.
     pub fn fmacc_bf16_f32_slice(self, acc: &[f32], a: &[u16], b: &[u16], out: &mut [f32]) {
         assert!(acc.len() == a.len() && a.len() == b.len() && b.len() == out.len());
-        let (mut pa, mut pb, mut pc, mut po, mut n) =
-            (a.as_ptr(), b.as_ptr(), acc.as_ptr(), out.as_mut_ptr(), a.len());
+        let (mut pa, mut pb, mut pc, mut po, mut n) = (
+            a.as_ptr(),
+            b.as_ptr(),
+            acc.as_ptr(),
+            out.as_mut_ptr(),
+            a.len(),
+        );
         if n == 0 {
             return;
         }

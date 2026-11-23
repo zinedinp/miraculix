@@ -104,7 +104,8 @@ pub fn reduce_max_f32(a: &[f32]) -> f32 {
     if let Some(t) = rvv() {
         return t.reduce_max_f32(a);
     }
-    a.iter().fold(f32::NEG_INFINITY, |m, &x| if x > m { x } else { m })
+    a.iter()
+        .fold(f32::NEG_INFINITY, |m, &x| if x > m { x } else { m })
 }
 
 /// Smallest element, NaN ignored; `+inf` if there is none.
@@ -112,7 +113,8 @@ pub fn reduce_min_f32(a: &[f32]) -> f32 {
     if let Some(t) = rvv() {
         return t.reduce_min_f32(a);
     }
-    a.iter().fold(f32::INFINITY, |m, &x| if x < m { x } else { m })
+    a.iter()
+        .fold(f32::INFINITY, |m, &x| if x < m { x } else { m })
 }
 
 /// First index of the largest element and its value, NaN ignored.
@@ -123,7 +125,8 @@ pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
     }
     let mut best: Option<(usize, f32)> = None;
     for (i, &x) in a.iter().enumerate() {
-        if x > best.map_or(f32::NEG_INFINITY, |b| b.1) || (best.is_none() && x == f32::NEG_INFINITY) {
+        if x > best.map_or(f32::NEG_INFINITY, |b| b.1) || (best.is_none() && x == f32::NEG_INFINITY)
+        {
             best = Some((i, x));
         }
     }
@@ -167,7 +170,9 @@ pub fn dot_i8_i32(a: &[i8], b: &[i8]) -> i32 {
         return t.dot_i8_i32(a, b);
     }
     assert_eq!(a.len(), b.len());
-    a.iter().zip(b).fold(0i32, |s, (&x, &y)| s.wrapping_add(x as i32 * y as i32))
+    a.iter()
+        .zip(b)
+        .fold(0i32, |s, (&x, &y)| s.wrapping_add(x as i32 * y as i32))
 }
 
 /// bfloat16 bits to `f32`, exact. Uses `Zvfbfmin` when present.
@@ -241,6 +246,17 @@ pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
     for (o, &x) in out.iter_mut().zip(a) {
         *o = x - l;
     }
+}
+
+/// `out[i] = sum_k(signal[i + k] * taps[k])`, same contract as
+/// `x86::reduce::sliding_dot_f32`. Portable code (k ascending, each product
+/// rounded); no RVV kernel yet.
+///
+/// # Panics
+/// If `out` is not empty and `signal.len() + 1 < out.len() + taps.len()`.
+pub fn sliding_dot_f32(signal: &[f32], taps: &[f32], out: &mut [f32]) {
+    crate::reduce_common::sliding_check(signal, taps, out);
+    crate::reduce_common::sliding_scalar(signal, taps, out, 0);
 }
 
 pub use crate::reduce_common::{GEMM_MR, GEMM_NR};

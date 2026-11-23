@@ -41,7 +41,12 @@ pub enum Locality {
 
 impl Locality {
     /// Every locality, nearest first.
-    pub const ALL: [Locality; 4] = [Locality::L1, Locality::L2, Locality::L3, Locality::Streaming];
+    pub const ALL: [Locality; 4] = [
+        Locality::L1,
+        Locality::L2,
+        Locality::L3,
+        Locality::Streaming,
+    ];
 }
 
 /// Prefetch the line holding `p` to be read.
@@ -67,11 +72,11 @@ pub fn instruction<T>(p: *const T) {
 mod imp {
     use super::Locality;
     use crate::x86::{Feature, detect_features};
-    use core::sync::atomic::{AtomicU8, Ordering};
     #[cfg(target_arch = "x86")]
     use core::arch::x86::{_MM_HINT_NTA, _MM_HINT_T0, _MM_HINT_T1, _MM_HINT_T2, _mm_prefetch};
     #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64::{_MM_HINT_NTA, _MM_HINT_T0, _MM_HINT_T1, _MM_HINT_T2, _mm_prefetch};
+    use core::sync::atomic::{AtomicU8, Ordering};
 
     /// One feature's presence, probed on first use: a relaxed load per hint, no call.
     struct Probe {

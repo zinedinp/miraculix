@@ -24,8 +24,8 @@
 
 use core::arch::asm;
 
-use super::super::super::{Feature, FeatureSet};
 use super::super::super::tiers::Avx10;
+use super::super::super::{Feature, FeatureSet};
 
 /// FP8 flavour for [`Avx10Fp8`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,7 +203,8 @@ impl Avx10Fp8 {
         assert_eq!(out.len(), a.len());
         let whole = a.len() - a.len() % 32;
         for i in (0..whole).step_by(32) {
-            out[i..i + 32].copy_from_slice(&self.fp8_to_f16x32(fmt, a[i..i + 32].try_into().unwrap()));
+            out[i..i + 32]
+                .copy_from_slice(&self.fp8_to_f16x32(fmt, a[i..i + 32].try_into().unwrap()));
         }
         if whole < a.len() {
             let mut pad = [0u8; 32];
@@ -220,7 +221,8 @@ impl Avx10Fp8 {
         assert_eq!(out.len(), a.len());
         let whole = a.len() - a.len() % 32;
         for i in (0..whole).step_by(32) {
-            out[i..i + 32].copy_from_slice(&self.fp8_to_f32x32(fmt, a[i..i + 32].try_into().unwrap()));
+            out[i..i + 32]
+                .copy_from_slice(&self.fp8_to_f32x32(fmt, a[i..i + 32].try_into().unwrap()));
         }
         if whole < a.len() {
             let mut pad = [0u8; 32];
@@ -237,13 +239,17 @@ impl Avx10Fp8 {
         assert_eq!(out.len(), a.len());
         let whole = a.len() - a.len() % 32;
         for i in (0..whole).step_by(32) {
-            out[i..i + 32]
-                .copy_from_slice(&self.f16x32_to_fp8(fmt, saturate, a[i..i + 32].try_into().unwrap()));
+            out[i..i + 32].copy_from_slice(&self.f16x32_to_fp8(
+                fmt,
+                saturate,
+                a[i..i + 32].try_into().unwrap(),
+            ));
         }
         if whole < a.len() {
             let mut pad = [0u16; 32];
             pad[..a.len() - whole].copy_from_slice(&a[whole..]);
-            out[whole..].copy_from_slice(&self.f16x32_to_fp8(fmt, saturate, pad)[..a.len() - whole]);
+            out[whole..]
+                .copy_from_slice(&self.f16x32_to_fp8(fmt, saturate, pad)[..a.len() - whole]);
         }
     }
 }

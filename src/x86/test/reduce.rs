@@ -29,7 +29,10 @@ fn data(n: usize, seed: u64, nan_every: usize) -> Vec<f32> {
 }
 
 fn ref_max(a: &[f32]) -> f32 {
-    a.iter().copied().filter(|x| !x.is_nan()).fold(f32::NEG_INFINITY, f32::max)
+    a.iter()
+        .copied()
+        .filter(|x| !x.is_nan())
+        .fold(f32::NEG_INFINITY, f32::max)
 }
 
 #[test]
@@ -38,24 +41,34 @@ fn max_min_argmax_match_scalar_on_every_tier() {
         for n in (0..140).chain([1000, 4097]) {
             for nan in [0, 3, 1] {
                 let a = data(n, n as u64 + 7, nan);
-                assert_eq!(reduce_max_f32_with(t, &a), ref_max(&a), "{t:?} n={n} nan={nan}");
-                let mn = a.iter().copied().filter(|x| !x.is_nan()).fold(f32::INFINITY, f32::min);
-                assert_eq!(reduce_min_f32_with(t, &a), mn, "{t:?} min n={n}");
-                let want = a
+                assert_eq!(
+                    reduce_max_f32_with(t, &a),
+                    ref_max(&a),
+                    "{t:?} n={n} nan={nan}"
+                );
+                let mn = a
                     .iter()
-                    .enumerate()
-                    .filter(|(_, x)| !x.is_nan())
-                    .fold(None, |b: Option<(usize, f32)>, (i, &x)| match b {
+                    .copied()
+                    .filter(|x| !x.is_nan())
+                    .fold(f32::INFINITY, f32::min);
+                assert_eq!(reduce_min_f32_with(t, &a), mn, "{t:?} min n={n}");
+                let want = a.iter().enumerate().filter(|(_, x)| !x.is_nan()).fold(
+                    None,
+                    |b: Option<(usize, f32)>, (i, &x)| match b {
                         Some((_, bv)) if bv >= x => b,
                         _ => Some((i, x)),
-                    });
+                    },
+                );
                 assert_eq!(argmax_f32_with(t, &a), want, "{t:?} argmax n={n} nan={nan}");
             }
         }
     }
     assert_eq!(argmax_f32(&[]), None);
     assert_eq!(argmax_f32(&[f32::NAN; 40]), None);
-    assert_eq!(argmax_f32(&[f32::NEG_INFINITY; 20]), Some((0, f32::NEG_INFINITY)));
+    assert_eq!(
+        argmax_f32(&[f32::NEG_INFINITY; 20]),
+        Some((0, f32::NEG_INFINITY))
+    );
 }
 
 #[test]
@@ -65,7 +78,10 @@ fn sum_is_close_on_every_tier() {
             let a = data(n, 3, 0);
             let want: f64 = a.iter().map(|&x| x as f64).sum();
             let got = reduce_sum_f32_with(t, &a) as f64;
-            assert!((got - want).abs() <= 1e-3 + want.abs() * 1e-6, "{t:?} n={n}: {got} vs {want}");
+            assert!(
+                (got - want).abs() <= 1e-3 + want.abs() * 1e-6,
+                "{t:?} n={n}: {got} vs {want}"
+            );
         }
     }
     assert!(reduce_sum_f32(&[1.0, f32::NAN]).is_nan());
@@ -88,7 +104,21 @@ fn bf16_widening_is_exact() {
 #[test]
 fn exp_error_bound_on_every_tier() {
     let mut xs: Vec<f32> = (-9000..=8900).map(|i| i as f32 * 0.01).collect();
-    xs.extend([0.0, -0.0, 1e-8, -1e-8, 88.72283, 88.8, -87.33654, -87.4, -200.0, 200.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN]);
+    xs.extend([
+        0.0,
+        -0.0,
+        1e-8,
+        -1e-8,
+        88.72283,
+        88.8,
+        -87.33654,
+        -87.4,
+        -200.0,
+        200.0,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NAN,
+    ]);
     for t in tiers() {
         let mut out = vec![0f32; xs.len()];
         exp_f32_with(t, &xs, &mut out);
@@ -125,12 +155,21 @@ fn compress_and_topk_match_reference_on_every_tier() {
                 for k in [1usize, 3, 40, 300] {
                     let (mut idx, mut val) = (vec![0u32; k], vec![0f32; k]);
                     let got = topk_f32_with(t, &a, &mut idx, &mut val);
-                    let mut all: Vec<(usize, f32)> = a.iter().copied().enumerate().filter(|(_, x)| !x.is_nan()).collect();
+                    let mut all: Vec<(usize, f32)> = a
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .filter(|(_, x)| !x.is_nan())
+                        .collect();
                     all.sort_by(|x, y| y.1.partial_cmp(&x.1).unwrap().then(x.0.cmp(&y.0)));
                     all.truncate(k);
                     assert_eq!(got, all.len(), "{t:?} topk count n={n} k={k}");
                     for j in 0..got {
-                        assert_eq!((idx[j] as usize, val[j]), all[j], "{t:?} topk n={n} k={k} j={j}");
+                        assert_eq!(
+                            (idx[j] as usize, val[j]),
+                            all[j],
+                            "{t:?} topk n={n} k={k} j={j}"
+                        );
                     }
                 }
             }
@@ -139,7 +178,10 @@ fn compress_and_topk_match_reference_on_every_tier() {
 }
 
 fn close(got: f64, want: f64, rel: f64, what: &str) {
-    assert!((got - want).abs() <= rel * want.abs().max(1.0), "{what}: got {got}, want {want}");
+    assert!(
+        (got - want).abs() <= rel * want.abs().max(1.0),
+        "{what}: got {got}, want {want}"
+    );
 }
 
 #[test]
@@ -152,7 +194,12 @@ fn affine_u16_matches_scalar_on_every_tier() {
             let mut out = vec![0f32; n];
             affine_u16_f32_with(t, &q, a, b, &mut out);
             for i in 0..n {
-                close(out[i] as f64, a as f64 * q[i] as f64 + b as f64, 2e-7, "affine");
+                close(
+                    out[i] as f64,
+                    a as f64 * q[i] as f64 + b as f64,
+                    2e-7,
+                    "affine",
+                );
             }
         }
     }
@@ -170,9 +217,16 @@ fn dot_matches_f64_on_every_tier() {
             let a: Vec<f32> = (0..n).map(|_| (r() % 2001) as f32 * 0.01 - 10.0).collect();
             let b: Vec<f32> = (0..n).map(|_| (r() % 2001) as f32 * 0.01 - 10.0).collect();
             let want: f64 = a.iter().zip(&b).map(|(&x, &y)| x as f64 * y as f64).sum();
-            let abs: f64 = a.iter().zip(&b).map(|(&x, &y)| (x as f64 * y as f64).abs()).sum();
+            let abs: f64 = a
+                .iter()
+                .zip(&b)
+                .map(|(&x, &y)| (x as f64 * y as f64).abs())
+                .sum();
             let got = dot_f32_with(t, &a, &b) as f64;
-            assert!((got - want).abs() <= 1e-5 * abs.max(1.0), "{t:?} n={n}: {got} vs {want}");
+            assert!(
+                (got - want).abs() <= 1e-5 * abs.max(1.0),
+                "{t:?} n={n}: {got} vs {want}"
+            );
         }
     }
     assert!(dot_f32(&[1.0, f32::NAN], &[1.0, 1.0]).is_nan());
@@ -193,7 +247,10 @@ fn logsumexp_and_log_softmax_match_f64_on_every_tier() {
             let m = a.iter().fold(f32::NEG_INFINITY, |x, &y| x.max(y)) as f64;
             let want = m + a.iter().map(|&x| (x as f64 - m).exp()).sum::<f64>().ln();
             let got = logsumexp_f32_with(t, &a) as f64;
-            assert!((got - want).abs() <= 2e-6 * want.abs().max(1.0), "{t:?} n={n}: {got} vs {want}");
+            assert!(
+                (got - want).abs() <= 2e-6 * want.abs().max(1.0),
+                "{t:?} n={n}: {got} vs {want}"
+            );
             let mut out = vec![0f32; n];
             log_softmax_f32_with(t, &a, &mut out);
             let p: f64 = out.iter().map(|&x| (x as f64).exp()).sum();
@@ -220,8 +277,10 @@ fn gemm_want(kc: usize, a: &[f32], b: &[f32], init: &[[f32; GEMM_NR]; GEMM_MR]) 
     let mut w = vec![0f64; GEMM_MR * GEMM_NR];
     for i in 0..GEMM_MR {
         for j in 0..GEMM_NR {
-            w[i * GEMM_NR + j] =
-                init[i][j] as f64 + (0..kc).map(|k| a[k * GEMM_MR + i] as f64 * b[k * GEMM_NR + j] as f64).sum::<f64>();
+            w[i * GEMM_NR + j] = init[i][j] as f64
+                + (0..kc)
+                    .map(|k| a[k * GEMM_MR + i] as f64 * b[k * GEMM_NR + j] as f64)
+                    .sum::<f64>();
         }
     }
     w
@@ -248,7 +307,10 @@ fn gemm_kernel_matches_f64_on_every_tier() {
             for i in 0..GEMM_MR {
                 for j in 0..GEMM_NR {
                     let (g, w) = (acc[i][j] as f64, want[i * GEMM_NR + j]);
-                    assert!((g - w).abs() <= 2e-6 * (kc as f64 + 1.0), "{t:?} kc={kc} [{i}][{j}]: {g} vs {w}");
+                    assert!(
+                        (g - w).abs() <= 2e-6 * (kc as f64 + 1.0),
+                        "{t:?} kc={kc} [{i}][{j}]: {g} vs {w}"
+                    );
                 }
             }
         }
@@ -271,4 +333,47 @@ fn gemm_kernel_propagates_nan() {
 fn gemm_kernel_panics_on_short_panel() {
     let mut acc = [[0f32; GEMM_NR]; GEMM_MR];
     gemm_f32_kernel(2, &[0.0; GEMM_MR], &[0.0; 2 * GEMM_NR], &mut acc);
+}
+
+/// Products and sums of the quarter grid stay exact in `f32`, so every tier
+/// must give the definition bit for bit.
+#[test]
+fn sliding_dot_matches_the_definition_on_every_tier() {
+    for t in tiers() {
+        for taps_len in [0, 1, 3, 64, 65] {
+            for n in [0, 1, 3, 4, 15, 16, 31, 33, 127, 128, 129, 300] {
+                let taps = data(taps_len, 11 + taps_len as u64, 0);
+                let signal = data(n + taps_len.saturating_sub(1), 5, 0);
+                let mut out = vec![f32::NAN; n];
+                sliding_dot_f32_with(t, &signal, &taps, &mut out);
+                for (i, &got) in out.iter().enumerate() {
+                    let want: f64 = taps
+                        .iter()
+                        .enumerate()
+                        .map(|(k, &c)| signal[i + k] as f64 * c as f64)
+                        .sum();
+                    assert_eq!(got, want as f32, "{t:?} taps={taps_len} n={n} i={i}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sliding_dot_propagates_nan() {
+    for t in tiers() {
+        let mut signal = vec![1.0f32; 100];
+        signal[40] = f32::NAN;
+        let mut out = vec![0.0; 97];
+        sliding_dot_f32_with(t, &signal, &[1.0; 4], &mut out);
+        for (i, &x) in out.iter().enumerate() {
+            assert_eq!(x.is_nan(), (37..=40).contains(&i), "{t:?} i={i}");
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "sliding_dot_f32")]
+fn sliding_dot_wants_every_window() {
+    sliding_dot_f32(&[0.0; 10], &[0.0; 4], &mut [0.0; 8]);
 }

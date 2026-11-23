@@ -60,7 +60,6 @@ macro_rules! auto_up {
         return $plain;
     }};
 }
-pub use super::reduce::bf16_to_f32;
 use super::ops::{
     avx::avx_ifma::AvxIfma, avx::avx_vnni::AvxVnni, avx::avx_vnni::vnni_acc_saturating,
     avx::avx_vnni::vnni_acc_wrapping, avx::avx2::Avx2, avx::f16c::F16c,
@@ -73,6 +72,7 @@ use super::ops::{
     avx512::avx512ifma::madd52lo_scalar, avx512::avx512vnni::Avx512Vnni,
     avx512::avx512vpopcntdq::Avx512Vpopcntdq, other::popcnt::Popcnt,
 };
+pub use super::reduce::bf16_to_f32;
 
 /// Regular int binop, both `baseline` and `probed` bottom families share this
 /// exact "up" shape (`Avx512f` -> `Avx2`[+lift]): only their bottom tier
@@ -1883,7 +1883,7 @@ pub fn srlv_u32(a: &[u32], count: &[u32], out: &mut [u32]) {
     }
 }
 
-/// `out[i] = a[i] * b[i] + c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = a[i] * b[i] + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -1900,12 +1900,10 @@ pub fn fmadd_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
         // FMA3 implies AVX; use 256-bit path.
         return t.fmadd_f32x8_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = x * y + z;
-    }
+    super::auto_down::fmadd_f32(a, b, c, out)
 }
 
-/// `out[i] = a[i] * b[i] + c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = a[i] * b[i] + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -1921,12 +1919,10 @@ pub fn fmadd_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fmadd_f64x4_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = x * y + z;
-    }
+    super::auto_down::fmadd_f64(a, b, c, out)
 }
 
-/// `out[i] = a[i] * b[i] - c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = a[i] * b[i] - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -1942,12 +1938,10 @@ pub fn fmsub_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fmsub_f32x8_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = x * y - z;
-    }
+    super::auto_down::fmsub_f32(a, b, c, out)
 }
 
-/// `out[i] = a[i] * b[i] - c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = a[i] * b[i] - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -1963,12 +1957,10 @@ pub fn fmsub_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fmsub_f64x4_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = x * y - z;
-    }
+    super::auto_down::fmsub_f64(a, b, c, out)
 }
 
-/// `out[i] = -(a[i] * b[i]) + c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = -(a[i] * b[i]) + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -1984,12 +1976,10 @@ pub fn fnmadd_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmadd_f32x8_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = -(x * y) + z;
-    }
+    super::auto_down::fnmadd_f32(a, b, c, out)
 }
 
-/// `out[i] = -(a[i] * b[i]) + c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = -(a[i] * b[i]) + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -2005,12 +1995,10 @@ pub fn fnmadd_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmadd_f64x4_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = -(x * y) + z;
-    }
+    super::auto_down::fnmadd_f64(a, b, c, out)
 }
 
-/// `out[i] = -(a[i] * b[i]) - c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = -(a[i] * b[i]) - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -2026,12 +2014,10 @@ pub fn fnmsub_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmsub_f32x8_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = -(x * y) - z;
-    }
+    super::auto_down::fnmsub_f32(a, b, c, out)
 }
 
-/// `out[i] = -(a[i] * b[i]) - c[i]` (HW fused when FMA/AVX-512F). Scalar remainder is not fused.
+/// `out[i] = -(a[i] * b[i]) - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
 ///
 /// # Panics
 /// Length mismatch among `a`, `b`, `c`, `out`.
@@ -2047,15 +2033,13 @@ pub fn fnmsub_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmsub_f64x4_slice(a, b, c, out);
     }
-    for (((&x, &y), &z), o) in a.iter().zip(b).zip(c).zip(out.iter_mut()) {
-        *o = -(x * y) - z;
-    }
+    super::auto_down::fnmsub_f64(a, b, c, out)
 }
 
 /// `out[i] = a[i] + sum_n(b[n][i] * c[n])`: Xeon-Phi-only AVX512_4FMAPS
 /// (`VP4FMADDPS`), software-composed as 4 folded `Avx512f` `fmadd_f32`
-/// calls, no `avx512_4fmaps` CPUID bit needed. Scalar fallback below
-/// `Avx512f` (no lower-tier HW form to cascade through).
+/// calls, no `avx512_4fmaps` CPUID bit needed. Below `Avx512f`, unfused on
+/// AVX or SSE (no lower-tier HW form), then scalar.
 ///
 /// # Panics
 /// `a`/`out`/every `b[n]` length mismatch.
@@ -2068,19 +2052,13 @@ pub fn p4fmadd_f32(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
     if let Some(t) = Avx512f::from_features(super::detect_features()) {
         return t.p4fmadd_f32_slice(a, b, c, out);
     }
-    for (i, (&x, o)) in a.iter().zip(out.iter_mut()).enumerate() {
-        let mut acc = x;
-        for n in 0..4 {
-            acc += b[n][i] * c[n];
-        }
-        *o = acc;
-    }
+    super::auto_down::p4fmadd_f32(a, b, c, out)
 }
 
 /// `out[i] = a[i] - sum_n(b[n][i] * c[n])`: Xeon-Phi-only AVX512_4FMAPS
 /// (`VP4FNMADDPS`), software-composed as 4 folded `Avx512f` `fnmadd_f32`
-/// calls, no `avx512_4fmaps` CPUID bit needed. Scalar fallback below
-/// `Avx512f` (no lower-tier HW form to cascade through).
+/// calls, no `avx512_4fmaps` CPUID bit needed. Below `Avx512f`, unfused on
+/// AVX or SSE (no lower-tier HW form), then scalar.
 ///
 /// # Panics
 /// `a`/`out`/every `b[n]` length mismatch.
@@ -2093,13 +2071,7 @@ pub fn p4fnmadd_f32(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
     if let Some(t) = Avx512f::from_features(super::detect_features()) {
         return t.p4fnmadd_f32_slice(a, b, c, out);
     }
-    for (i, (&x, o)) in a.iter().zip(out.iter_mut()).enumerate() {
-        let mut acc = x;
-        for n in 0..4 {
-            acc -= b[n][i] * c[n];
-        }
-        *o = acc;
-    }
+    super::auto_down::p4fnmadd_f32(a, b, c, out)
 }
 
 // FP16: AVX512FP16 (512-bit) -> AVX512FP16+VL (128/256-bit) -> scalar via f32.

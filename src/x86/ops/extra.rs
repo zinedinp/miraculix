@@ -341,18 +341,78 @@ macro_rules! shift_var {
     };
 }
 
-shift_var!(Sse2, "sse2", sll_u16x8, sll_epi16_128, 8, __m128i, _mm_loadu_si128, _mm_storeu_si128,
-    _mm_sll_epi16, "`a << count` per u16 lane, count from a runtime value (`psllw`). `count >= 16` gives 0.");
-shift_var!(Sse2, "sse2", srl_u16x8, srl_epi16_128, 8, __m128i, _mm_loadu_si128, _mm_storeu_si128,
-    _mm_srl_epi16, "`a >> count` logical per u16 lane, runtime count (`psrlw`). `count >= 16` gives 0.");
-shift_var!(Avx2, "avx2", sll_u16x16, sll_epi16_256, 16, __m256i, _mm256_loadu_si256, _mm256_storeu_si256,
-    _mm256_sll_epi16, "`a << count` per u16 lane, runtime count (`vpsllw`). `count >= 16` gives 0.");
-shift_var!(Avx2, "avx2", srl_u16x16, srl_epi16_256, 16, __m256i, _mm256_loadu_si256, _mm256_storeu_si256,
-    _mm256_srl_epi16, "`a >> count` logical per u16 lane, runtime count (`vpsrlw`). `count >= 16` gives 0.");
-shift_var!(Avx512Bw, "avx512bw", sll_u16x32, sll_epi16_512, 32, __m512i, _mm512_loadu_si512, _mm512_storeu_si512,
-    _mm512_sll_epi16, "`a << count` per u16 lane, runtime count (`vpsllw`). `count >= 16` gives 0.");
-shift_var!(Avx512Bw, "avx512bw", srl_u16x32, srl_epi16_512, 32, __m512i, _mm512_loadu_si512, _mm512_storeu_si512,
-    _mm512_srl_epi16, "`a >> count` logical per u16 lane, runtime count (`vpsrlw`). `count >= 16` gives 0.");
+shift_var!(
+    Sse2,
+    "sse2",
+    sll_u16x8,
+    sll_epi16_128,
+    8,
+    __m128i,
+    _mm_loadu_si128,
+    _mm_storeu_si128,
+    _mm_sll_epi16,
+    "`a << count` per u16 lane, count from a runtime value (`psllw`). `count >= 16` gives 0."
+);
+shift_var!(
+    Sse2,
+    "sse2",
+    srl_u16x8,
+    srl_epi16_128,
+    8,
+    __m128i,
+    _mm_loadu_si128,
+    _mm_storeu_si128,
+    _mm_srl_epi16,
+    "`a >> count` logical per u16 lane, runtime count (`psrlw`). `count >= 16` gives 0."
+);
+shift_var!(
+    Avx2,
+    "avx2",
+    sll_u16x16,
+    sll_epi16_256,
+    16,
+    __m256i,
+    _mm256_loadu_si256,
+    _mm256_storeu_si256,
+    _mm256_sll_epi16,
+    "`a << count` per u16 lane, runtime count (`vpsllw`). `count >= 16` gives 0."
+);
+shift_var!(
+    Avx2,
+    "avx2",
+    srl_u16x16,
+    srl_epi16_256,
+    16,
+    __m256i,
+    _mm256_loadu_si256,
+    _mm256_storeu_si256,
+    _mm256_srl_epi16,
+    "`a >> count` logical per u16 lane, runtime count (`vpsrlw`). `count >= 16` gives 0."
+);
+shift_var!(
+    Avx512Bw,
+    "avx512bw",
+    sll_u16x32,
+    sll_epi16_512,
+    32,
+    __m512i,
+    _mm512_loadu_si512,
+    _mm512_storeu_si512,
+    _mm512_sll_epi16,
+    "`a << count` per u16 lane, runtime count (`vpsllw`). `count >= 16` gives 0."
+);
+shift_var!(
+    Avx512Bw,
+    "avx512bw",
+    srl_u16x32,
+    srl_epi16_512,
+    32,
+    __m512i,
+    _mm512_loadu_si512,
+    _mm512_storeu_si512,
+    _mm512_srl_epi16,
+    "`a >> count` logical per u16 lane, runtime count (`vpsrlw`). `count >= 16` gives 0."
+);
 
 // Partial loads / scalar-to-vector (upper lanes zeroed)
 

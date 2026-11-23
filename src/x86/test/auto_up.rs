@@ -1436,3 +1436,164 @@ fn p4dpwssd_i32_panics_on_length_mismatch() {
     }));
     assert!(result.is_err());
 }
+
+/// The rungs below `Fma` (AVX, SSE) round the product first, as the scalar
+/// fallback does, so they must equal it bit for bit, whichever one this CPU runs.
+#[test]
+fn the_multiply_add_family_below_fma_matches_scalar() {
+    use crate::x86::auto_down;
+    for len in [0usize, 1, 3, 4, 5, 7, 8, 9, 15, 16, 17, 100] {
+        let a: Vec<f32> = (0..len).map(|i| i as f32 * 0.3 - 2.0).collect();
+        let b: Vec<f32> = (0..len).map(|i| 1.7 - i as f32 * 0.11).collect();
+        let c: Vec<f32> = (0..len).map(|i| (i % 5) as f32 * 0.9 - 1.3).collect();
+        let ops: [(
+            fn(&[f32], &[f32], &[f32], &mut [f32]),
+            fn(f32, f32, f32) -> f32,
+        ); 4] = [
+            (auto_down::fmadd_f32, |x, y, z| x * y + z),
+            (auto_down::fmsub_f32, |x, y, z| x * y - z),
+            (auto_down::fnmadd_f32, |x, y, z| -(x * y) + z),
+            (auto_down::fnmsub_f32, |x, y, z| -(x * y) - z),
+        ];
+        type Kernel = unsafe fn(&[f32], &[f32], &[f32], &mut [f32]) -> usize;
+        let kernels: [[Kernel; 2]; 4] = [
+            [auto_down::fmadd_f32_sse, auto_down::fmadd_f32_avx],
+            [auto_down::fmsub_f32_sse, auto_down::fmsub_f32_avx],
+            [auto_down::fnmadd_f32_sse, auto_down::fnmadd_f32_avx],
+            [auto_down::fnmsub_f32_sse, auto_down::fnmsub_f32_avx],
+        ];
+        for (n, ((down, scalar), kernels)) in ops.into_iter().zip(kernels).enumerate() {
+            let mut out = vec![0.0; len];
+            down(&a, &b, &c, &mut out);
+            let want: Vec<f32> = (0..len).map(|i| scalar(a[i], b[i], c[i])).collect();
+            assert_eq!(
+                out.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                want.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                "f32 op {n} len={len}"
+            );
+            // Each rung by itself, where the CPU has it.
+            let has = [cfg!(target_arch = "x86_64"), Avx::detect().is_some()];
+            for (rung, kernel) in kernels.into_iter().enumerate().filter(|&(r, _)| has[r]) {
+                let mut out = vec![0.0f32; len];
+                // SAFETY: the rung's feature is present (checked above).
+                let done = unsafe { kernel(&a, &b, &c, &mut out) };
+                assert_eq!(done, len - len % [4, 8][rung]);
+                assert!(
+                    (0..done).all(|i| out[i].to_bits() == want[i].to_bits()),
+                    "f32 op {n} rung {rung} len={len}"
+                );
+            }
+        }
+        let (a, b, c): (Vec<f64>, Vec<f64>, Vec<f64>) = (
+            a.iter().map(|&x| x as f64 / 3.0).collect(),
+            b.iter().map(|&x| x as f64).collect(),
+            c.iter().map(|&x| x as f64).collect(),
+        );
+        let ops: [(
+            fn(&[f64], &[f64], &[f64], &mut [f64]),
+            fn(f64, f64, f64) -> f64,
+        ); 4] = [
+            (auto_down::fmadd_f64, |x, y, z| x * y + z),
+            (auto_down::fmsub_f64, |x, y, z| x * y - z),
+            (auto_down::fnmadd_f64, |x, y, z| -(x * y) + z),
+            (auto_down::fnmsub_f64, |x, y, z| -(x * y) - z),
+        ];
+        type Kernel64 = unsafe fn(&[f64], &[f64], &[f64], &mut [f64]) -> usize;
+        let kernels: [[Kernel64; 2]; 4] = [
+            [auto_down::fmadd_f64_sse, auto_down::fmadd_f64_avx],
+            [auto_down::fmsub_f64_sse, auto_down::fmsub_f64_avx],
+            [auto_down::fnmadd_f64_sse, auto_down::fnmadd_f64_avx],
+            [auto_down::fnmsub_f64_sse, auto_down::fnmsub_f64_avx],
+        ];
+        for (n, ((down, scalar), kernels)) in ops.into_iter().zip(kernels).enumerate() {
+            let has = [cfg!(target_arch = "x86_64"), Avx::detect().is_some()];
+            let want: Vec<f64> = (0..len).map(|i| scalar(a[i], b[i], c[i])).collect();
+            for (rung, kernel) in kernels.into_iter().enumerate().filter(|&(r, _)| has[r]) {
+                let mut out = vec![0.0f64; len];
+                // SAFETY: the rung's feature is present (checked above).
+                let done = unsafe { kernel(&a, &b, &c, &mut out) };
+                assert_eq!(done, len - len % [2, 4][rung]);
+                assert!(
+                    (0..done).all(|i| out[i].to_bits() == want[i].to_bits()),
+                    "f64 op {n} rung {rung} len={len}"
+                );
+            }
+            let mut out = vec![0.0; len];
+            down(&a, &b, &c, &mut out);
+            assert_eq!(
+                out.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                want.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                "f64 op {n} len={len}"
+            );
+        }
+    }
+    // -(0 * 1) - 0 is -0, not +0.
+    let mut out = [1.0f32; 9];
+    auto_down::fnmsub_f32(&[0.0; 9], &[1.0; 9], &[0.0; 9], &mut out);
+    assert!(
+        out.iter().all(|x| x.to_bits() == (-0.0f32).to_bits()),
+        "{out:?}"
+    );
+}
+
+#[test]
+fn p4_multiply_add_below_avx512_matches_scalar() {
+    use crate::x86::auto_down;
+    for len in [0usize, 1, 3, 4, 7, 8, 9, 17, 100] {
+        let a: Vec<f32> = (0..len).map(|i| i as f32 * 0.3 - 2.0).collect();
+        let bs: Vec<Vec<f32>> = (0..4)
+            .map(|n| (0..len).map(|i| (i + n) as f32 * 0.17 - 1.0).collect())
+            .collect();
+        let b = [&bs[0][..], &bs[1][..], &bs[2][..], &bs[3][..]];
+        let c = [0.5f32, -1.25, 3.0, 0.1];
+        type Kernel = unsafe fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]) -> usize;
+        let rungs: [(
+            f32,
+            fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]),
+            [Kernel; 2],
+        ); 2] = [
+            (
+                1.0,
+                auto_down::p4fmadd_f32,
+                [auto_down::p4fmadd_f32_sse, auto_down::p4fmadd_f32_avx],
+            ),
+            (
+                -1.0,
+                auto_down::p4fnmadd_f32,
+                [auto_down::p4fnmadd_f32_sse, auto_down::p4fnmadd_f32_avx],
+            ),
+        ];
+        for (sign, down, kernels) in rungs {
+            let has = [cfg!(target_arch = "x86_64"), Avx::detect().is_some()];
+            let mut outs = vec![vec![0.0f32; len]];
+            down(&a, b, c, &mut outs[0]);
+            for (rung, kernel) in kernels.into_iter().enumerate().filter(|&(r, _)| has[r]) {
+                let mut out = vec![0.0f32; len];
+                // SAFETY: the rung's feature is present (checked above).
+                let done = unsafe { kernel(&a, b, c, &mut out) };
+                assert_eq!(done, len - len % [4, 8][rung]);
+                for i in done..len {
+                    out[i] = outs[0][i];
+                }
+                outs.push(out);
+            }
+            for out in outs {
+                for i in 0..len {
+                    let mut want = a[i];
+                    for n in 0..4 {
+                        if sign > 0.0 {
+                            want += b[n][i] * c[n]
+                        } else {
+                            want -= b[n][i] * c[n]
+                        }
+                    }
+                    assert_eq!(
+                        out[i].to_bits(),
+                        want.to_bits(),
+                        "sign {sign} len={len} i={i}"
+                    );
+                }
+            }
+        }
+    }
+}

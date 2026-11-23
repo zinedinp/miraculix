@@ -26,7 +26,10 @@ fn half(lo: u8, hi: u8) -> f32 {
 pub fn dequantize_q8_0(blocks: &[u8], out: &mut [f32]) {
     assert_eq!(out.len() % Q8_0_BLOCK, 0);
     assert_eq!(blocks.len(), out.len() / Q8_0_BLOCK * Q8_0_BYTES);
-    for (b, o) in blocks.chunks_exact(Q8_0_BYTES).zip(out.chunks_exact_mut(Q8_0_BLOCK)) {
+    for (b, o) in blocks
+        .chunks_exact(Q8_0_BYTES)
+        .zip(out.chunks_exact_mut(Q8_0_BLOCK))
+    {
         let d = half(b[0], b[1]);
         for (y, &q) in o.iter_mut().zip(&b[2..]) {
             *y = (q as i8) as f32 * d;
@@ -43,7 +46,10 @@ pub fn dequantize_q8_0(blocks: &[u8], out: &mut [f32]) {
 pub fn dequantize_q6_k(blocks: &[u8], out: &mut [f32]) {
     assert_eq!(out.len() % Q6_K_BLOCK, 0);
     assert_eq!(blocks.len(), out.len() / Q6_K_BLOCK * Q6_K_BYTES);
-    for (b, y) in blocks.chunks_exact(Q6_K_BYTES).zip(out.chunks_exact_mut(Q6_K_BLOCK)) {
+    for (b, y) in blocks
+        .chunks_exact(Q6_K_BYTES)
+        .zip(out.chunks_exact_mut(Q6_K_BLOCK))
+    {
         let (ql_all, rest) = b.split_at(128);
         let (qh_all, rest) = rest.split_at(64);
         let (sc_all, dh) = rest.split_at(16);

@@ -59,7 +59,10 @@ fn roundtrip_every_code() {
         for c in 0..(1u32 << f.bits()) {
             let x = f.decode(c);
             if x.is_nan() {
-                assert!(f.decode(f.encode(x, Overflow::Special)).is_nan(), "{f:?} {c:#x}");
+                assert!(
+                    f.decode(f.encode(x, Overflow::Special)).is_nan(),
+                    "{f:?} {c:#x}"
+                );
                 continue;
             }
             let back = f.encode(x, Overflow::Special);
@@ -72,7 +75,15 @@ fn roundtrip_every_code() {
 #[test]
 fn matches_native_f16_f32_bits() {
     // bf16 = top 16 bits of f32 with RNE
-    for &x in &[0.1f32, -3.14159, 1e-40, 1e30, 65504.0, 1.0 + 1.0 / 256.0, 1.0 + 3.0 / 256.0] {
+    for &x in &[
+        0.1f32,
+        -3.14159,
+        1e-40,
+        1e30,
+        65504.0,
+        1.0 + 1.0 / 256.0,
+        1.0 + 3.0 / 256.0,
+    ] {
         let b = x.to_bits();
         let want = ((b + 0x7FFF + ((b >> 16) & 1)) >> 16) as u32;
         assert_eq!(MiniFloat::Bf16.encode(x, Overflow::Special), want, "{x}");
@@ -107,7 +118,11 @@ fn slices_and_lut() {
     }
     let mut codes = vec![0u8; 256];
     MiniFloat::E4M3Fn.encode_u8_slice(&[0.5; 256], &mut codes, Overflow::Saturate);
-    assert!(codes.iter().all(|&c| MiniFloat::E4M3Fn.decode(c as u32) == 0.5));
+    assert!(
+        codes
+            .iter()
+            .all(|&c| MiniFloat::E4M3Fn.decode(c as u32) == 0.5)
+    );
 }
 
 #[test]
@@ -117,7 +132,10 @@ fn tf32() {
     assert_eq!(round_to_tf32(x).to_bits(), 0x3F80_0000);
     let y = f32::from_bits(0x3F80_3000); // tie, odd neighbour: rounds up
     assert_eq!(round_to_tf32(y).to_bits(), 0x3F80_4000);
-    assert_eq!(round_to_tf32(f32::from_bits(0x3F80_1001)).to_bits(), 0x3F80_2000);
+    assert_eq!(
+        round_to_tf32(f32::from_bits(0x3F80_1001)).to_bits(),
+        0x3F80_2000
+    );
     assert!(round_to_tf32(f32::NAN).is_nan());
     assert_eq!(round_to_tf32(f32::INFINITY), f32::INFINITY);
     assert_eq!(round_to_tf32(f32::MAX), f32::INFINITY);
@@ -184,7 +202,9 @@ fn int_dots() {
 }
 
 fn data(n: usize) -> Vec<f32> {
-    (0..n).map(|i| ((i * 37 % 101) as f32 - 50.0) * 0.173 * (1.0 + (i / 32) as f32)).collect()
+    (0..n)
+        .map(|i| ((i * 37 % 101) as f32 - 50.0) * 0.173 * (1.0 + (i / 32) as f32))
+        .collect()
 }
 
 #[test]
@@ -204,9 +224,16 @@ fn mx_roundtrip_within_format_error() {
         let mut out = vec![0.0; 96];
         mx_dequantize(elem, &sc, &d, &mut out);
         for b in 0..3 {
-            let amax = src[b * 32..][..32].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            let amax = src[b * 32..][..32]
+                .iter()
+                .fold(0.0f32, |m, v| m.max(v.abs()));
             for i in b * 32..(b + 1) * 32 {
-                assert!((src[i] - out[i]).abs() <= tol * amax, "{elem:?} {} vs {}", src[i], out[i]);
+                assert!(
+                    (src[i] - out[i]).abs() <= tol * amax,
+                    "{elem:?} {} vs {}",
+                    src[i],
+                    out[i]
+                );
             }
         }
     }
@@ -238,17 +265,38 @@ fn nvfp4_roundtrip() {
     let mut out = vec![0.0; 64];
     nvfp4_dequantize(&sc, ts, &d, &mut out);
     for b in 0..4 {
-        let amax = src[b * 16..][..16].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        let amax = src[b * 16..][..16]
+            .iter()
+            .fold(0.0f32, |m, v| m.max(v.abs()));
         for i in b * 16..(b + 1) * 16 {
-            assert!((src[i] - out[i]).abs() <= 0.2 * amax + 1e-6, "{} vs {}", src[i], out[i]);
+            assert!(
+                (src[i] - out[i]).abs() <= 0.2 * amax + 1e-6,
+                "{} vs {}",
+                src[i],
+                out[i]
+            );
         }
     }
 }
 
 #[test]
 fn half_slices_match_scalar_codec() {
-    let mut vals: Vec<f32> = (0..2000).map(|i| ((i as f32 - 1000.0) * 0.37).powi(3) * 1e-3).collect();
-    vals.extend([0.0, -0.0, 1e-8, 6.0e-8, 65504.0, 65520.0, 1e9, -1e9, f32::INFINITY, f32::MIN_POSITIVE, 1e-40]);
+    let mut vals: Vec<f32> = (0..2000)
+        .map(|i| ((i as f32 - 1000.0) * 0.37).powi(3) * 1e-3)
+        .collect();
+    vals.extend([
+        0.0,
+        -0.0,
+        1e-8,
+        6.0e-8,
+        65504.0,
+        65520.0,
+        1e9,
+        -1e9,
+        f32::INFINITY,
+        f32::MIN_POSITIVE,
+        1e-40,
+    ]);
     for f in [MiniFloat::F16, MiniFloat::Bf16] {
         for ov in [Overflow::Special, Overflow::Saturate] {
             let mut got = vec![0u16; vals.len()];
@@ -263,7 +311,10 @@ fn half_slices_match_scalar_codec() {
         f.decode_u16_slice(&codes, &mut dec);
         for (i, d) in dec.iter().enumerate() {
             let w = f.decode(i as u32);
-            assert!(d.to_bits() == w.to_bits() || (d.is_nan() && w.is_nan()), "{f:?} {i:#x}");
+            assert!(
+                d.to_bits() == w.to_bits() || (d.is_nan() && w.is_nan()),
+                "{f:?} {i:#x}"
+            );
         }
     }
 }
@@ -277,9 +328,30 @@ fn arm_fp8_hardware_matches_scalar() {
         return;
     };
     std::eprintln!("FP8 hardware path active");
-    let mut vals: Vec<f32> = (0..3000).map(|i| ((i as f32 - 1500.0) * 0.29).powi(3) * 1e-2).collect();
-    vals.extend([0.0, -0.0, 1e-9, 1e-3, 448.0, 449.0, 464.0, 480.0, 1e5, 57344.0, 61440.0, 1e30, -1e30, f32::INFINITY, f32::NEG_INFINITY]);
-    for (hw, f) in [(Fp8Format::E4m3, MiniFloat::E4M3Fn), (Fp8Format::E5m2, MiniFloat::E5M2)] {
+    let mut vals: Vec<f32> = (0..3000)
+        .map(|i| ((i as f32 - 1500.0) * 0.29).powi(3) * 1e-2)
+        .collect();
+    vals.extend([
+        0.0,
+        -0.0,
+        1e-9,
+        1e-3,
+        448.0,
+        449.0,
+        464.0,
+        480.0,
+        1e5,
+        57344.0,
+        61440.0,
+        1e30,
+        -1e30,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+    ]);
+    for (hw, f) in [
+        (Fp8Format::E4m3, MiniFloat::E4M3Fn),
+        (Fp8Format::E5m2, MiniFloat::E5M2),
+    ] {
         for (sat, ov) in [(true, Overflow::Saturate), (false, Overflow::Special)] {
             let mut got = vec![0u8; vals.len()];
             t.f32_to_fp8_slice(hw, sat, &vals, &mut got);
@@ -292,15 +364,25 @@ fn arm_fp8_hardware_matches_scalar() {
         t.fp8_to_f32_slice(hw, &codes, &mut dec);
         for i in 0..256 {
             let w = f.decode(i as u32);
-            assert!(dec[i].to_bits() == w.to_bits() || (dec[i].is_nan() && w.is_nan()), "{f:?} {i:#x}");
+            assert!(
+                dec[i].to_bits() == w.to_bits() || (dec[i].is_nan() && w.is_nan()),
+                "{f:?} {i:#x}"
+            );
         }
     }
 }
 
 #[test]
 fn fp8_u8_slices_match_scalar_codec() {
-    let vals: Vec<f32> = (0..777).map(|i| ((i as f32 - 400.0) * 0.41).powi(3) * 1e-2).collect();
-    for f in [MiniFloat::E4M3Fn, MiniFloat::E5M2, MiniFloat::E4M3Fnuz, MiniFloat::E5M2Fnuz] {
+    let vals: Vec<f32> = (0..777)
+        .map(|i| ((i as f32 - 400.0) * 0.41).powi(3) * 1e-2)
+        .collect();
+    for f in [
+        MiniFloat::E4M3Fn,
+        MiniFloat::E5M2,
+        MiniFloat::E4M3Fnuz,
+        MiniFloat::E5M2Fnuz,
+    ] {
         for ov in [Overflow::Saturate, Overflow::Special] {
             let mut got = vec![0u8; vals.len()];
             f.encode_u8_slice(&vals, &mut got, ov);
@@ -344,7 +426,10 @@ fn bfp_word(rng: &mut Xs, row: u32) -> u32 {
 
 fn bfp_words() -> Vec<u32> {
     let mut rng = Xs(0x9E37_79B9_7F4A_7C15);
-    (0..5000u32).flat_map(|r| (0..16).map(move |_| r)).map(|r| bfp_word(&mut rng, r)).collect()
+    (0..5000u32)
+        .flat_map(|r| (0..16).map(move |_| r))
+        .map(|r| bfp_word(&mut rng, r))
+        .collect()
 }
 
 fn fnv(h: &mut u64, b: u8) {
@@ -387,7 +472,11 @@ fn bfp_oracle_matches_tt_metal() {
                 (true, true) => bfp_encode_rows_bf16(elem, &bf, &mut exps, &mut data),
                 (true, false) => bfp_encode_rows_bf16_scalar(elem, &bf, &mut exps, &mut data),
             }
-            assert_eq!(bfp_hash(elem, &exps, &data), want, "{elem:?} bf16={is_bf} dispatch={hw}");
+            assert_eq!(
+                bfp_hash(elem, &exps, &data),
+                want,
+                "{elem:?} bf16={is_bf} dispatch={hw}"
+            );
         }
     }
 }
@@ -395,7 +484,10 @@ fn bfp_oracle_matches_tt_metal() {
 #[test]
 fn bfp_decode_roundtrip_and_edges() {
     // exactly representable row: 1, -0.5, 0.25, ... all multiples of 2^-6 under shared exp 127
-    let row: [f32; 16] = [1.0, -0.5, 0.25, 0.0, -0.0, 1.984375, -1.0, 0.015625, 0.5, 0.75, -0.125, 0.0625, 1.5, 1.25, -1.75, 0.03125];
+    let row: [f32; 16] = [
+        1.0, -0.5, 0.25, 0.0, -0.0, 1.984375, -1.0, 0.015625, 0.5, 0.75, -0.125, 0.0625, 1.5, 1.25,
+        -1.75, 0.03125,
+    ];
     let (mut e, mut d) = ([0u8; 1], [0u8; 16]);
     bfp_encode_rows(BfpElem::M7, &row, &mut e, &mut d);
     assert_eq!(e[0], 127);
@@ -437,9 +529,16 @@ fn mx_block_size_is_a_parameter() {
         let mut out = vec![0.0; 64];
         mx_dequantize_block(elem, blk, &sc, &d, &mut out);
         for b in 0..nb {
-            let amax = src[b * blk..][..blk].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            let amax = src[b * blk..][..blk]
+                .iter()
+                .fold(0.0f32, |m, v| m.max(v.abs()));
             for i in b * blk..(b + 1) * blk {
-                assert!((src[i] - out[i]).abs() <= 0.35 * amax, "{blk}: {} vs {}", src[i], out[i]);
+                assert!(
+                    (src[i] - out[i]).abs() <= 0.35 * amax,
+                    "{blk}: {} vs {}",
+                    src[i],
+                    out[i]
+                );
             }
         }
     }
@@ -493,7 +592,9 @@ fn gguf_matches_ggml() {
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn bfp_v4_token_matches_scalar() {
-    let Some(t) = crate::x86::bundles::V4::detect() else { return };
+    let Some(t) = crate::x86::bundles::V4::detect() else {
+        return;
+    };
     let words = bfp_words();
     let f32s: Vec<f32> = words.iter().map(|&w| f32::from_bits(w)).collect();
     let bf: Vec<u16> = words.iter().map(|&w| (w >> 16) as u16).collect();
@@ -510,7 +611,10 @@ fn bfp_v4_token_matches_scalar() {
         let (mut o1, mut o2) = (vec![0f32; f32s.len()], vec![0f32; f32s.len()]);
         t.bfp_decode_rows(elem, &e1, &d1, &mut o1);
         bfp_decode_rows(elem, &e1, &d1, &mut o2);
-        assert_eq!(o1.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), o2.iter().map(|x| x.to_bits()).collect::<Vec<_>>());
+        assert_eq!(
+            o1.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+            o2.iter().map(|x| x.to_bits()).collect::<Vec<_>>()
+        );
     }
 }
 
@@ -545,10 +649,16 @@ fn bfp_decodes_dispatch_matches_scalar_for_every_code_and_exponent() {
         let (mut a, mut b) = (vec![0f32; n], vec![0f32; n]);
         bfp_decode_rows(elem, &e, &d, &mut a);
         bfp_decode_rows_scalar(elem, &e, &d, &mut b);
-        assert!(a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()), "{elem:?} f32");
+        assert!(
+            a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()),
+            "{elem:?} f32"
+        );
         bfp_decode_rows_tensix_f32(elem, &e, &d, &mut a);
         bfp_decode_rows_tensix_f32_scalar(elem, &e, &d, &mut b);
-        assert!(a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()), "{elem:?} tensix f32");
+        assert!(
+            a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()),
+            "{elem:?} tensix f32"
+        );
         let (mut a, mut b) = (vec![0u16; n], vec![0u16; n]);
         bfp_decode_rows_bf16(elem, &e, &d, &mut a);
         bfp_decode_rows_bf16_scalar(elem, &e, &d, &mut b);
@@ -595,12 +705,22 @@ fn bfp_tensix_and_value_decodes_differ_only_where_documented() {
             let shared = e[i / BFP_ROW] as i32;
             let code = ((i % BFP_ROW) + (i / BFP_ROW) % codes.div_ceil(BFP_ROW) * BFP_ROW) % codes;
             let (sign, mag) = (code >> bits, code & ((1 << bits) - 1));
-            let lz = if mag == 0 { 0 } else { bits as i32 - 1 - (usize::BITS - 1 - mag.leading_zeros()) as i32 };
+            let lz = if mag == 0 {
+                0
+            } else {
+                bits as i32 - 1 - (usize::BITS - 1 - mag.leading_zeros()) as i32
+            };
             let pow2 = mag.is_power_of_two();
             let documented = (mag == 0 && sign != 0)
                 || (mag != 0 && shared - lz <= 0)
                 || (mag != 0 && !pow2 && shared - lz == 255);
-            assert_eq!(v[i] != t[i], documented, "{elem:?} shared {shared} code {code:#x}: {:#06x} {:#06x}", v[i], t[i]);
+            assert_eq!(
+                v[i] != t[i],
+                documented,
+                "{elem:?} shared {shared} code {code:#x}: {:#06x} {:#06x}",
+                v[i],
+                t[i]
+            );
         }
     }
 }

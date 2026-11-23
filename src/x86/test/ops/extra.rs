@@ -33,7 +33,10 @@ fn cvt_f32_f64_roundtrip_all_widths() {
     if let Some(t) = Sse2::detect() {
         let w = t.cvt_f32x4_to_f64x2([1.5, -2.25, 9.0, 9.0]);
         assert_eq!(w, [1.5, -2.25]);
-        assert_eq!(t.cvt_f64x2_to_f32x4([0.1, -3.0]), [0.1f64 as f32, -3.0, 0.0, 0.0]);
+        assert_eq!(
+            t.cvt_f64x2_to_f32x4([0.1, -3.0]),
+            [0.1f64 as f32, -3.0, 0.0, 0.0]
+        );
     }
     if let Some(t) = Avx::detect() {
         let a = [1.0f32, -2.5, 3.25, 1e10];
@@ -60,12 +63,16 @@ fn unpack_matches_scalar() {
         let (a, b) = (seq::<32>(1), seq::<32>(100));
         assert_eq!(t.unpacklo_u8x32(a, b), unpack_ref(a, b, 16, false));
         assert_eq!(t.unpackhi_u8x32(a, b), unpack_ref(a, b, 16, true));
-        let (a, b): ([i16; 16], [i16; 16]) =
-            (core::array::from_fn(|i| i as i16), core::array::from_fn(|i| -(i as i16)));
+        let (a, b): ([i16; 16], [i16; 16]) = (
+            core::array::from_fn(|i| i as i16),
+            core::array::from_fn(|i| -(i as i16)),
+        );
         assert_eq!(t.unpacklo_i16x16(a, b), unpack_ref(a, b, 8, false));
         assert_eq!(t.unpackhi_i16x16(a, b), unpack_ref(a, b, 8, true));
-        let (a, b): ([i32; 8], [i32; 8]) =
-            (core::array::from_fn(|i| i as i32), core::array::from_fn(|i| 100 + i as i32));
+        let (a, b): ([i32; 8], [i32; 8]) = (
+            core::array::from_fn(|i| i as i32),
+            core::array::from_fn(|i| 100 + i as i32),
+        );
         assert_eq!(t.unpacklo_i32x8(a, b), unpack_ref(a, b, 4, false));
         assert_eq!(t.unpackhi_i32x8(a, b), unpack_ref(a, b, 4, true));
         let (a, b): ([i64; 4], [i64; 4]) = ([1, 2, 3, 4], [10, 20, 30, 40]);
@@ -76,18 +83,24 @@ fn unpack_matches_scalar() {
         let (a, b) = (seq::<64>(1), seq::<64>(100));
         assert_eq!(t.unpacklo_u8x64(a, b), unpack_ref(a, b, 16, false));
         assert_eq!(t.unpackhi_u8x64(a, b), unpack_ref(a, b, 16, true));
-        let (a, b): ([i16; 32], [i16; 32]) =
-            (core::array::from_fn(|i| i as i16), core::array::from_fn(|i| 500 + i as i16));
+        let (a, b): ([i16; 32], [i16; 32]) = (
+            core::array::from_fn(|i| i as i16),
+            core::array::from_fn(|i| 500 + i as i16),
+        );
         assert_eq!(t.unpacklo_i16x32(a, b), unpack_ref(a, b, 8, false));
         assert_eq!(t.unpackhi_i16x32(a, b), unpack_ref(a, b, 8, true));
     }
     if let Some(t) = Avx512f::detect() {
-        let (a, b): ([i32; 16], [i32; 16]) =
-            (core::array::from_fn(|i| i as i32), core::array::from_fn(|i| 100 + i as i32));
+        let (a, b): ([i32; 16], [i32; 16]) = (
+            core::array::from_fn(|i| i as i32),
+            core::array::from_fn(|i| 100 + i as i32),
+        );
         assert_eq!(t.unpacklo_i32x16(a, b), unpack_ref(a, b, 4, false));
         assert_eq!(t.unpackhi_i32x16(a, b), unpack_ref(a, b, 4, true));
-        let (a, b): ([i64; 8], [i64; 8]) =
-            (core::array::from_fn(|i| i as i64), core::array::from_fn(|i| 100 + i as i64));
+        let (a, b): ([i64; 8], [i64; 8]) = (
+            core::array::from_fn(|i| i as i64),
+            core::array::from_fn(|i| 100 + i as i64),
+        );
         assert_eq!(t.unpacklo_i64x8(a, b), unpack_ref(a, b, 2, false));
         assert_eq!(t.unpackhi_i64x8(a, b), unpack_ref(a, b, 2, true));
     }
@@ -105,13 +118,20 @@ fn shuffle_ref<const N: usize>(table: [i8; N], idx: [i8; N]) -> [i8; N] {
 
 #[test]
 fn byte_shuffle_is_in_lane() {
-    let idx32: [i8; 32] = core::array::from_fn(|i| if i % 5 == 0 { -1 } else { ((i * 3) % 32) as i8 });
+    let idx32: [i8; 32] =
+        core::array::from_fn(|i| if i % 5 == 0 { -1 } else { ((i * 3) % 32) as i8 });
     if let Some(t) = Avx2::detect() {
         let table: [i8; 32] = core::array::from_fn(|i| i as i8 + 1);
         assert_eq!(t.shuffle_i8x32(table, idx32), shuffle_ref(table, idx32));
     }
     if let Some(t) = Avx512Bw::detect() {
-        let idx: [i8; 64] = core::array::from_fn(|i| if i % 7 == 0 { -128 } else { ((i * 5) % 64) as i8 });
+        let idx: [i8; 64] = core::array::from_fn(|i| {
+            if i % 7 == 0 {
+                -128
+            } else {
+                ((i * 5) % 64) as i8
+            }
+        });
         let table: [i8; 64] = core::array::from_fn(|i| i as i8 + 1);
         assert_eq!(t.shuffle_i8x64(table, idx), shuffle_ref(table, idx));
     }
@@ -122,14 +142,23 @@ fn zero_extend_u8_u16() {
     let bytes: [u8; 32] = core::array::from_fn(|i| 255 - i as u8 * 3);
     if let Some(t) = Sse41::detect() {
         let a: [u8; 16] = core::array::from_fn(|i| bytes[i]);
-        assert_eq!(t.cvtepu8_u16x8(a), core::array::from_fn(|i| u16::from(a[i])));
+        assert_eq!(
+            t.cvtepu8_u16x8(a),
+            core::array::from_fn(|i| u16::from(a[i]))
+        );
     }
     if let Some(t) = Avx2::detect() {
         let a: [u8; 16] = core::array::from_fn(|i| bytes[i]);
-        assert_eq!(t.cvtepu8_u16x16(a), core::array::from_fn(|i| u16::from(a[i])));
+        assert_eq!(
+            t.cvtepu8_u16x16(a),
+            core::array::from_fn(|i| u16::from(a[i]))
+        );
     }
     if let Some(t) = Avx512Bw::detect() {
-        assert_eq!(t.cvtepu8_u16x32(bytes), core::array::from_fn(|i| u16::from(bytes[i])));
+        assert_eq!(
+            t.cvtepu8_u16x32(bytes),
+            core::array::from_fn(|i| u16::from(bytes[i]))
+        );
     }
 }
 
@@ -161,10 +190,12 @@ fn bit_k_of_every_byte_via_sll_movemask() {
     // The use case from the TODO: movemask(sll(v, 7 - bit)) == bit `bit` of every byte.
     let Some(t) = Sse2::detect() else { return };
     let bytes: [u8; 16] = seq(3);
-    let words: [u16; 8] = core::array::from_fn(|i| u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]));
+    let words: [u16; 8] =
+        core::array::from_fn(|i| u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]));
     for bit in 0..8u32 {
         let shifted = t.sll_u16x8(words, 7 - bit);
-        let sh_bytes: [i8; 16] = core::array::from_fn(|i| shifted[i / 2].to_le_bytes()[i % 2] as i8);
+        let sh_bytes: [i8; 16] =
+            core::array::from_fn(|i| shifted[i / 2].to_le_bytes()[i % 2] as i8);
         let got = t.movemask_i8x16(sh_bytes) as u32 & 0xFFFF;
         let want = (0..16).fold(0u32, |m, i| m | (u32::from(bytes[i] >> bit & 1) << i));
         assert_eq!(got, want, "bit {bit}");
@@ -205,7 +236,13 @@ fn cross_lane_fixups() {
         let a: [u64; 8] = core::array::from_fn(|i| i as u64);
         let b: [u64; 8] = core::array::from_fn(|i| 100 + i as u64);
         let idx: [u64; 8] = [8, 0, 15, 7, 9, 1, 14, 6];
-        let want = idx.map(|i| if i & 8 != 0 { b[(i & 7) as usize] } else { a[(i & 7) as usize] });
+        let want = idx.map(|i| {
+            if i & 8 != 0 {
+                b[(i & 7) as usize]
+            } else {
+                a[(i & 7) as usize]
+            }
+        });
         assert_eq!(t.permutex2var_u64x8(a, idx, b), want);
     }
 }

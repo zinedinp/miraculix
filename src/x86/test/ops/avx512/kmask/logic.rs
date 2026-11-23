@@ -1,4 +1,3 @@
-
 use super::*;
 
 macro_rules! k_binop_test {

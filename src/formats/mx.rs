@@ -62,7 +62,10 @@ impl MxElem {
 
     /// Bytes of element data per block of `block` elements (`block * bits` must be a multiple of 8).
     pub const fn block_bytes_for(self, block: usize) -> usize {
-        assert!(block * self.bits() % 8 == 0, "block * bits must be a multiple of 8");
+        assert!(
+            block * self.bits() % 8 == 0,
+            "block * bits must be a multiple of 8"
+        );
         block * self.bits() / 8
     }
 
@@ -92,7 +95,11 @@ fn put_bits(data: &mut [u8], i: usize, w: usize, v: u32) {
 
 /// E8M0 scale to `f32`: `2^(s - 127)`, `0xFF` is NaN.
 pub fn e8m0_to_f32(s: u8) -> f32 {
-    if s == 0xFF { f32::NAN } else { pow2(s as i32 - 127) }
+    if s == 0xFF {
+        f32::NAN
+    } else {
+        pow2(s as i32 - 127)
+    }
 }
 
 fn round_even(v: f32) -> f32 {
@@ -116,7 +123,13 @@ pub fn mx_dequantize(elem: MxElem, scales: &[u8], data: &[u8], out: &mut [f32]) 
 ///
 /// # Panics
 /// If `block` is 0, `out.len()` is not a multiple of it, or the lengths do not match.
-pub fn mx_dequantize_block(elem: MxElem, block: usize, scales: &[u8], data: &[u8], out: &mut [f32]) {
+pub fn mx_dequantize_block(
+    elem: MxElem,
+    block: usize,
+    scales: &[u8],
+    data: &[u8],
+    out: &mut [f32],
+) {
     assert!(block > 0 && out.len() % block == 0);
     let blocks = out.len() / block;
     let bb = elem.block_bytes_for(block);
@@ -149,14 +162,22 @@ pub fn mx_quantize(elem: MxElem, src: &[f32], scales: &mut [u8], data: &mut [u8]
 ///
 /// # Panics
 /// If `block` is 0, `src.len()` is not a multiple of it, or the lengths do not match.
-pub fn mx_quantize_block(elem: MxElem, block: usize, src: &[f32], scales: &mut [u8], data: &mut [u8]) {
+pub fn mx_quantize_block(
+    elem: MxElem,
+    block: usize,
+    src: &[f32],
+    scales: &mut [u8],
+    data: &mut [u8],
+) {
     assert!(block > 0 && src.len() % block == 0);
     let blocks = src.len() / block;
     let bb = elem.block_bytes_for(block);
     assert!(scales.len() >= blocks && data.len() >= blocks * bb);
     let w = elem.bits();
     for (b, sb) in src.chunks_exact(block).enumerate() {
-        let amax = sb.iter().fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
+        let amax = sb
+            .iter()
+            .fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
         let s = if amax == 0.0 || !amax.is_finite() {
             127
         } else {
@@ -181,8 +202,14 @@ pub fn mx_quantize_block(elem: MxElem, block: usize, src: &[f32], scales: &mut [
 /// NVFP4 per-tensor scale for `src`: `amax / (6 * 448)`, so block scales fit E4M3.
 /// Returns `1.0` for an all-zero tensor.
 pub fn nvfp4_tensor_scale(src: &[f32]) -> f32 {
-    let amax = src.iter().fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
-    if amax == 0.0 { 1.0 } else { amax / (6.0 * 448.0) }
+    let amax = src
+        .iter()
+        .fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
+    if amax == 0.0 {
+        1.0
+    } else {
+        amax / (6.0 * 448.0)
+    }
 }
 
 /// Dequantizes NVFP4: 16-element FP4 blocks, each with an E4M3 scale byte,
@@ -212,14 +239,20 @@ pub fn nvfp4_quantize(src: &[f32], tensor_scale: f32, scales: &mut [u8], data: &
     let blocks = src.len() / NVFP4_BLOCK;
     assert!(scales.len() >= blocks && data.len() >= blocks * NVFP4_BLOCK / 2);
     for (b, sb) in src.chunks_exact(NVFP4_BLOCK).enumerate() {
-        let amax = sb.iter().fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
+        let amax = sb
+            .iter()
+            .fold(0.0f32, |m, v| if v.abs() > m { v.abs() } else { m });
         let sc = MiniFloat::E4M3Fn.encode(amax / 6.0 / tensor_scale, Overflow::Saturate);
         scales[b] = sc as u8;
         let real = MiniFloat::E4M3Fn.decode(sc) * tensor_scale;
         let d = &mut data[b * 8..(b + 1) * 8];
         d.fill(0);
         for (i, &x) in sb.iter().enumerate() {
-            let c = if real == 0.0 { 0 } else { MiniFloat::E2M1.encode(x / real, Overflow::Saturate) };
+            let c = if real == 0.0 {
+                0
+            } else {
+                MiniFloat::E2M1.encode(x / real, Overflow::Saturate)
+            };
             put_bits(d, i, 4, c);
         }
     }

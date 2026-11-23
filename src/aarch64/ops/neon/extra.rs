@@ -93,18 +93,53 @@ fn rev_f64x2(v: float64x2_t) -> float64x2_t {
     vextq_f64::<1>(v, v)
 }
 
-lane_io!(ld_u8x16, st_u8x16, uint8x16_t, u8, vld1q_u8, vst1q_u8, rev_u8x16);
-lane_io!(ld_s8x16, st_s8x16, int8x16_t, i8, vld1q_s8, vst1q_s8, rev_s8x16);
-lane_io!(ld_f32x4, st_f32x4, float32x4_t, f32, vld1q_f32, vst1q_f32, rev_f32x4);
-lane_io!(ld_f64x2, st_f64x2, float64x2_t, f64, vld1q_f64, vst1q_f64, rev_f64x2);
+lane_io!(
+    ld_u8x16, st_u8x16, uint8x16_t, u8, vld1q_u8, vst1q_u8, rev_u8x16
+);
+lane_io!(
+    ld_s8x16, st_s8x16, int8x16_t, i8, vld1q_s8, vst1q_s8, rev_s8x16
+);
+lane_io!(
+    ld_f32x4,
+    st_f32x4,
+    float32x4_t,
+    f32,
+    vld1q_f32,
+    vst1q_f32,
+    rev_f32x4
+);
+lane_io!(
+    ld_f64x2,
+    st_f64x2,
+    float64x2_t,
+    f64,
+    vld1q_f64,
+    vst1q_f64,
+    rev_f64x2
+);
 lane_io!(ld_u8x8, st_u8x8, uint8x8_t, u8, vld1_u8, vst1_u8, vrev64_u8);
-lane_io!(ld_f32x2, st_f32x2, float32x2_t, f32, vld1_f32, vst1_f32, vrev64_f32);
+lane_io!(
+    ld_f32x2,
+    st_f32x2,
+    float32x2_t,
+    f32,
+    vld1_f32,
+    vst1_f32,
+    vrev64_f32
+);
 
 /// Four consecutive 16-byte table registers, each lane-normalised.
 #[inline]
 #[target_feature(enable = "neon")]
 unsafe fn ld_u8x16_x4(p: *const u8) -> uint8x16x4_t {
-    unsafe { uint8x16x4_t(ld_u8x16(p), ld_u8x16(p.add(16)), ld_u8x16(p.add(32)), ld_u8x16(p.add(48))) }
+    unsafe {
+        uint8x16x4_t(
+            ld_u8x16(p),
+            ld_u8x16(p.add(16)),
+            ld_u8x16(p.add(32)),
+            ld_u8x16(p.add(48)),
+        )
+    }
 }
 
 // f32 <-> f64
@@ -174,7 +209,10 @@ unsafe fn cvt_f32x2_to_f64x2_impl(a: &[f32; 2]) -> [f64; 2] {
 unsafe fn cvt_f32x4_to_f64x2_impl(a: &[f32; 4]) -> [f64; 2] {
     unsafe {
         let mut out = [0f64; 2];
-        st_f64x2(out.as_mut_ptr(), vcvt_f64_f32(vget_low_f32(ld_f32x4(a.as_ptr()))));
+        st_f64x2(
+            out.as_mut_ptr(),
+            vcvt_f64_f32(vget_low_f32(ld_f32x4(a.as_ptr()))),
+        );
         out
     }
 }
@@ -318,7 +356,10 @@ impl Neon {
 unsafe fn test_u8x16_impl(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
     unsafe {
         let mut out = [0u8; 16];
-        st_u8x16(out.as_mut_ptr(), vtstq_u8(ld_u8x16(a.as_ptr()), ld_u8x16(b.as_ptr())));
+        st_u8x16(
+            out.as_mut_ptr(),
+            vtstq_u8(ld_u8x16(a.as_ptr()), ld_u8x16(b.as_ptr())),
+        );
         out
     }
 }
@@ -330,7 +371,11 @@ unsafe fn test_u8x16_impl(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
 unsafe fn zip_u8x16_impl<const HIGH: bool>(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
     unsafe {
         let (va, vb) = (ld_u8x16(a.as_ptr()), ld_u8x16(b.as_ptr()));
-        let vr = if HIGH { vzip2q_u8(va, vb) } else { vzip1q_u8(va, vb) };
+        let vr = if HIGH {
+            vzip2q_u8(va, vb)
+        } else {
+            vzip1q_u8(va, vb)
+        };
         let mut out = [0u8; 16];
         st_u8x16(out.as_mut_ptr(), vr);
         out
@@ -344,7 +389,11 @@ unsafe fn zip_u8x16_impl<const HIGH: bool>(a: &[u8; 16], b: &[u8; 16]) -> [u8; 1
 unsafe fn zip_u8x8_impl<const HIGH: bool>(a: &[u8; 8], b: &[u8; 8]) -> [u8; 8] {
     unsafe {
         let (va, vb) = (ld_u8x8(a.as_ptr()), ld_u8x8(b.as_ptr()));
-        let vr = if HIGH { vzip2_u8(va, vb) } else { vzip1_u8(va, vb) };
+        let vr = if HIGH {
+            vzip2_u8(va, vb)
+        } else {
+            vzip1_u8(va, vb)
+        };
         let mut out = [0u8; 8];
         st_u8x8(out.as_mut_ptr(), vr);
         out
@@ -432,7 +481,10 @@ impl Neon {
 unsafe fn tbl_u8x16_impl(table: &[u8; 16], idx: &[u8; 16]) -> [u8; 16] {
     unsafe {
         let mut out = [0u8; 16];
-        st_u8x16(out.as_mut_ptr(), vqtbl1q_u8(ld_u8x16(table.as_ptr()), ld_u8x16(idx.as_ptr())));
+        st_u8x16(
+            out.as_mut_ptr(),
+            vqtbl1q_u8(ld_u8x16(table.as_ptr()), ld_u8x16(idx.as_ptr())),
+        );
         out
     }
 }
@@ -444,7 +496,11 @@ unsafe fn tbl_u8x16_impl(table: &[u8; 16], idx: &[u8; 16]) -> [u8; 16] {
 unsafe fn tbx_u8x16_impl(fallback: &[u8; 16], table: &[u8; 16], idx: &[u8; 16]) -> [u8; 16] {
     unsafe {
         let mut out = [0u8; 16];
-        let r = vqtbx1q_u8(ld_u8x16(fallback.as_ptr()), ld_u8x16(table.as_ptr()), ld_u8x16(idx.as_ptr()));
+        let r = vqtbx1q_u8(
+            ld_u8x16(fallback.as_ptr()),
+            ld_u8x16(table.as_ptr()),
+            ld_u8x16(idx.as_ptr()),
+        );
         st_u8x16(out.as_mut_ptr(), r);
         out
     }
@@ -470,7 +526,11 @@ unsafe fn tbl4_u8x64_impl(table: &[u8; 64], idx: &[u8; 16]) -> [u8; 16] {
 unsafe fn tbx4_u8x64_impl(fallback: &[u8; 16], table: &[u8; 64], idx: &[u8; 16]) -> [u8; 16] {
     unsafe {
         let mut out = [0u8; 16];
-        let r = vqtbx4q_u8(ld_u8x16(fallback.as_ptr()), ld_u8x16_x4(table.as_ptr()), ld_u8x16(idx.as_ptr()));
+        let r = vqtbx4q_u8(
+            ld_u8x16(fallback.as_ptr()),
+            ld_u8x16_x4(table.as_ptr()),
+            ld_u8x16(idx.as_ptr()),
+        );
         st_u8x16(out.as_mut_ptr(), r);
         out
     }

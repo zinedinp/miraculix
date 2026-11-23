@@ -20,6 +20,11 @@ macro_rules! auto_down {
         return $plain;
     }};
 }
+#[cfg(target_arch = "x86")]
+use core::arch::x86::*;
+#[cfg(target_arch = "x86_64")]
+use core::arch::x86_64::*;
+
 use super::ops::{
     avx::avx::Avx, sse::sse::Sse, sse::sse2::Sse2, sse::sse41::Sse41, sse::sse42::Sse42,
     sse::ssse3::Ssse3,
@@ -1250,3 +1255,303 @@ pub(crate) fn sra_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
         }
     }
 }
+
+// ------------------------------------------------- multiply-add without FMA
+
+/// The multiply-add family below `Fma`: `Avx` (256-bit), else `Sse`/`Sse2`
+/// (128-bit, the x86_64 baseline), else scalar. The product is rounded
+/// before the add, as in the scalar fallback. The caller checked lengths.
+macro_rules! ternary_unfused {
+    ($fn_name:ident, $Elem:ty, $Sse:ty, $sse_feat:literal, $avx_kernel:ident, $sse_kernel:ident,
+     $w256:literal, $w128:literal, $load256:ident, $store256:ident, $load128:ident, $store128:ident,
+     $op256:expr, $op128:expr, $scalar:expr) => {
+        #[target_feature(enable = "avx")]
+        pub(crate) unsafe fn $avx_kernel(
+            a: &[$Elem],
+            b: &[$Elem],
+            c: &[$Elem],
+            out: &mut [$Elem],
+        ) -> usize {
+            unsafe {
+                let op = $op256;
+                let mut i = 0;
+                while i + $w256 <= a.len() {
+                    let (x, y, z) = (
+                        $load256(a.as_ptr().add(i)),
+                        $load256(b.as_ptr().add(i)),
+                        $load256(c.as_ptr().add(i)),
+                    );
+                    $store256(out.as_mut_ptr().add(i), op(x, y, z));
+                    i += $w256;
+                }
+                i
+            }
+        }
+
+        #[target_feature(enable = $sse_feat)]
+        pub(crate) unsafe fn $sse_kernel(
+            a: &[$Elem],
+            b: &[$Elem],
+            c: &[$Elem],
+            out: &mut [$Elem],
+        ) -> usize {
+            unsafe {
+                let op = $op128;
+                let mut i = 0;
+                while i + $w128 <= a.len() {
+                    let (x, y, z) = (
+                        $load128(a.as_ptr().add(i)),
+                        $load128(b.as_ptr().add(i)),
+                        $load128(c.as_ptr().add(i)),
+                    );
+                    $store128(out.as_mut_ptr().add(i), op(x, y, z));
+                    i += $w128;
+                }
+                i
+            }
+        }
+
+        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], c: &[$Elem], out: &mut [$Elem]) {
+            let features = super::detect_features();
+            // SAFETY: each kernel runs only on a CPU with its feature (SSE and
+            // SSE2 are the x86_64 baseline); the caller checked the lengths.
+            let done = if Avx::from_features(features).is_some() {
+                unsafe { $avx_kernel(a, b, c, out) }
+            } else if cfg!(target_arch = "x86_64") || <$Sse>::from_features(features).is_some() {
+                unsafe { $sse_kernel(a, b, c, out) }
+            } else {
+                0
+            };
+            let op: fn($Elem, $Elem, $Elem) -> $Elem = $scalar;
+            for i in done..a.len() {
+                out[i] = op(a[i], b[i], c[i]);
+            }
+        }
+    };
+}
+ternary_unfused!(
+    fmadd_f32,
+    f32,
+    Sse,
+    "sse",
+    fmadd_f32_avx,
+    fmadd_f32_sse,
+    8,
+    4,
+    _mm256_loadu_ps,
+    _mm256_storeu_ps,
+    _mm_loadu_ps,
+    _mm_storeu_ps,
+    |x, y, z| _mm256_add_ps(_mm256_mul_ps(x, y), z),
+    |x, y, z| _mm_add_ps(_mm_mul_ps(x, y), z),
+    |x, y, z| x * y + z
+);
+ternary_unfused!(
+    fmadd_f64,
+    f64,
+    Sse2,
+    "sse2",
+    fmadd_f64_avx,
+    fmadd_f64_sse,
+    4,
+    2,
+    _mm256_loadu_pd,
+    _mm256_storeu_pd,
+    _mm_loadu_pd,
+    _mm_storeu_pd,
+    |x, y, z| _mm256_add_pd(_mm256_mul_pd(x, y), z),
+    |x, y, z| _mm_add_pd(_mm_mul_pd(x, y), z),
+    |x, y, z| x * y + z
+);
+ternary_unfused!(
+    fmsub_f32,
+    f32,
+    Sse,
+    "sse",
+    fmsub_f32_avx,
+    fmsub_f32_sse,
+    8,
+    4,
+    _mm256_loadu_ps,
+    _mm256_storeu_ps,
+    _mm_loadu_ps,
+    _mm_storeu_ps,
+    |x, y, z| _mm256_sub_ps(_mm256_mul_ps(x, y), z),
+    |x, y, z| _mm_sub_ps(_mm_mul_ps(x, y), z),
+    |x, y, z| x * y - z
+);
+ternary_unfused!(
+    fmsub_f64,
+    f64,
+    Sse2,
+    "sse2",
+    fmsub_f64_avx,
+    fmsub_f64_sse,
+    4,
+    2,
+    _mm256_loadu_pd,
+    _mm256_storeu_pd,
+    _mm_loadu_pd,
+    _mm_storeu_pd,
+    |x, y, z| _mm256_sub_pd(_mm256_mul_pd(x, y), z),
+    |x, y, z| _mm_sub_pd(_mm_mul_pd(x, y), z),
+    |x, y, z| x * y - z
+);
+ternary_unfused!(
+    fnmadd_f32,
+    f32,
+    Sse,
+    "sse",
+    fnmadd_f32_avx,
+    fnmadd_f32_sse,
+    8,
+    4,
+    _mm256_loadu_ps,
+    _mm256_storeu_ps,
+    _mm_loadu_ps,
+    _mm_storeu_ps,
+    |x, y, z| _mm256_sub_ps(z, _mm256_mul_ps(x, y)),
+    |x, y, z| _mm_sub_ps(z, _mm_mul_ps(x, y)),
+    |x, y, z| -(x * y) + z
+);
+ternary_unfused!(
+    fnmadd_f64,
+    f64,
+    Sse2,
+    "sse2",
+    fnmadd_f64_avx,
+    fnmadd_f64_sse,
+    4,
+    2,
+    _mm256_loadu_pd,
+    _mm256_storeu_pd,
+    _mm_loadu_pd,
+    _mm_storeu_pd,
+    |x, y, z| _mm256_sub_pd(z, _mm256_mul_pd(x, y)),
+    |x, y, z| _mm_sub_pd(z, _mm_mul_pd(x, y)),
+    |x, y, z| -(x * y) + z
+);
+ternary_unfused!(
+    fnmsub_f32,
+    f32,
+    Sse,
+    "sse",
+    fnmsub_f32_avx,
+    fnmsub_f32_sse,
+    8,
+    4,
+    _mm256_loadu_ps,
+    _mm256_storeu_ps,
+    _mm_loadu_ps,
+    _mm_storeu_ps,
+    |x, y, z| _mm256_sub_ps(_mm256_xor_ps(_mm256_mul_ps(x, y), _mm256_set1_ps(-0.0)), z),
+    |x, y, z| _mm_sub_ps(_mm_xor_ps(_mm_mul_ps(x, y), _mm_set1_ps(-0.0)), z),
+    |x, y, z| -(x * y) - z
+);
+ternary_unfused!(
+    fnmsub_f64,
+    f64,
+    Sse2,
+    "sse2",
+    fnmsub_f64_avx,
+    fnmsub_f64_sse,
+    4,
+    2,
+    _mm256_loadu_pd,
+    _mm256_storeu_pd,
+    _mm_loadu_pd,
+    _mm_storeu_pd,
+    |x, y, z| _mm256_sub_pd(_mm256_xor_pd(_mm256_mul_pd(x, y), _mm256_set1_pd(-0.0)), z),
+    |x, y, z| _mm_sub_pd(_mm_xor_pd(_mm_mul_pd(x, y), _mm_set1_pd(-0.0)), z),
+    |x, y, z| -(x * y) - z
+);
+
+/// `p4fmadd_f32` / `p4fnmadd_f32` below `Avx512f`: `out[i] = a[i] ± sum_n(b[n][i] * c[n])`,
+/// n ascending, each product rounded, on `Avx`, `Sse` or scalar. Lengths checked by the caller.
+macro_rules! p4_unfused {
+    ($fn_name:ident, $avx_kernel:ident, $sse_kernel:ident, $acc256:ident, $acc128:ident, $acc:expr) => {
+        #[target_feature(enable = "avx")]
+        pub(crate) unsafe fn $avx_kernel(
+            a: &[f32],
+            b: [&[f32]; 4],
+            c: [f32; 4],
+            out: &mut [f32],
+        ) -> usize {
+            unsafe {
+                let mut i = 0;
+                while i + 8 <= a.len() {
+                    let mut acc = _mm256_loadu_ps(a.as_ptr().add(i));
+                    for (bn, &cn) in b.iter().zip(&c) {
+                        acc = $acc256(
+                            acc,
+                            _mm256_mul_ps(_mm256_loadu_ps(bn.as_ptr().add(i)), _mm256_set1_ps(cn)),
+                        );
+                    }
+                    _mm256_storeu_ps(out.as_mut_ptr().add(i), acc);
+                    i += 8;
+                }
+                i
+            }
+        }
+
+        #[target_feature(enable = "sse")]
+        pub(crate) unsafe fn $sse_kernel(
+            a: &[f32],
+            b: [&[f32]; 4],
+            c: [f32; 4],
+            out: &mut [f32],
+        ) -> usize {
+            unsafe {
+                let mut i = 0;
+                while i + 4 <= a.len() {
+                    let mut acc = _mm_loadu_ps(a.as_ptr().add(i));
+                    for (bn, &cn) in b.iter().zip(&c) {
+                        acc = $acc128(
+                            acc,
+                            _mm_mul_ps(_mm_loadu_ps(bn.as_ptr().add(i)), _mm_set1_ps(cn)),
+                        );
+                    }
+                    _mm_storeu_ps(out.as_mut_ptr().add(i), acc);
+                    i += 4;
+                }
+                i
+            }
+        }
+
+        pub(crate) fn $fn_name(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
+            let features = super::detect_features();
+            // SAFETY: as in `ternary_unfused`.
+            let done = if Avx::from_features(features).is_some() {
+                unsafe { $avx_kernel(a, b, c, out) }
+            } else if cfg!(target_arch = "x86_64") || Sse::from_features(features).is_some() {
+                unsafe { $sse_kernel(a, b, c, out) }
+            } else {
+                0
+            };
+            let acc: fn(f32, f32) -> f32 = $acc;
+            for i in done..a.len() {
+                let mut sum = a[i];
+                for n in 0..4 {
+                    sum = acc(sum, b[n][i] * c[n]);
+                }
+                out[i] = sum;
+            }
+        }
+    };
+}
+p4_unfused!(
+    p4fmadd_f32,
+    p4fmadd_f32_avx,
+    p4fmadd_f32_sse,
+    _mm256_add_ps,
+    _mm_add_ps,
+    |s, p| s + p
+);
+p4_unfused!(
+    p4fnmadd_f32,
+    p4fnmadd_f32_avx,
+    p4fnmadd_f32_sse,
+    _mm256_sub_ps,
+    _mm_sub_ps,
+    |s, p| s - p
+);
