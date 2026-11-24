@@ -985,6 +985,126 @@ sliding_kernel!(
     |x, y, z| _mm_add_ps(_mm_mul_ps(x, y), z)
 );
 
+// -------------------------------------------------------------- byte blend
+
+/// `out[i] = (a[i] * (den - num) + b[i] * num) / den` rounded to the nearest
+/// (halves up): `a` blended into `b` by `num / den`, as a GPU's `mix` writes a
+/// UNORM8 target. Exact on every tier (the lanes work in `f32`, where every
+/// step is exact or provably rounds the same). AVX-512F 64 bytes a loop
+/// (16 lanes), AVX2 32 (8 lanes), SSE2 and AVX 16 (4 lanes).
+///
+/// # Panics
+/// If the lengths differ, `den` is 0 or over 32767, or `num > den`.
+pub fn lerp_u8(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+    lerp_u8_with(best_tier(), a, b, num, den, out)
+}
+
+#[doc(hidden)]
+pub fn lerp_u8_with(tier: Tier, a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+    crate::reduce_common::lerp_check(a, b, num, den, out);
+    let w = crate::reduce_common::lerp_operands(num, den);
+    let done = match tier {
+        // SAFETY: tier chosen from detection; `lerp_check` makes the three lengths equal.
+        Tier::Avx512 => unsafe { lerp_avx512(a, b, w, out) },
+        Tier::Avx2 | Tier::Avx2Fma => unsafe { lerp_avx2(a, b, w, out) },
+        Tier::Avx | Tier::Sse2 => unsafe { lerp_sse2(a, b, w, out) },
+        Tier::Scalar => 0,
+    };
+    crate::reduce_common::lerp_scalar(a, b, num, den, out, done);
+}
+
+/// Whole blocks of 64; returns how many bytes it wrote.
+#[target_feature(enable = "avx512f")]
+unsafe fn lerp_avx512(a: &[u8], b: &[u8], [wa, wb, den, den2]: [f32; 4], out: &mut [u8]) -> usize {
+    unsafe {
+        let (wa, wb) = (_mm512_set1_ps(wa), _mm512_set1_ps(wb));
+        let (den, den2) = (_mm512_set1_ps(den), _mm512_set1_ps(den2));
+        let widen =
+            |p: *const u8| _mm512_cvtepi32_ps(_mm512_cvtepu8_epi32(_mm_loadu_si128(p.cast())));
+        let mut i = 0;
+        while i + 64 <= out.len() {
+            for g in (i..i + 64).step_by(16) {
+                let s = _mm512_add_ps(
+                    _mm512_mul_ps(widen(a.as_ptr().add(g)), wa),
+                    _mm512_mul_ps(widen(b.as_ptr().add(g)), wb),
+                );
+                let q = _mm512_div_ps(_mm512_add_ps(_mm512_add_ps(s, s), den), den2);
+                let bytes = _mm512_cvtepi32_epi8(_mm512_cvttps_epi32(q));
+                _mm_storeu_si128(out.as_mut_ptr().add(g).cast(), bytes);
+            }
+            i += 64;
+        }
+        i
+    }
+}
+
+/// Whole blocks of 32; returns how many bytes it wrote.
+#[target_feature(enable = "avx2")]
+unsafe fn lerp_avx2(a: &[u8], b: &[u8], [wa, wb, den, den2]: [f32; 4], out: &mut [u8]) -> usize {
+    unsafe {
+        let (wa, wb) = (_mm256_set1_ps(wa), _mm256_set1_ps(wb));
+        let (den, den2) = (_mm256_set1_ps(den), _mm256_set1_ps(den2));
+        let widen =
+            |p: *const u8| _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64(p.cast())));
+        let blend = |g: usize| {
+            let s = _mm256_add_ps(
+                _mm256_mul_ps(widen(a.as_ptr().add(g)), wa),
+                _mm256_mul_ps(widen(b.as_ptr().add(g)), wb),
+            );
+            _mm256_cvttps_epi32(_mm256_div_ps(_mm256_add_ps(_mm256_add_ps(s, s), den), den2))
+        };
+        // `packs`/`packus` work per 128-bit half: dwords 0-7 come out as
+        // r0 lo, r1 lo, r2 lo, r3 lo, r0 hi, r1 hi, r2 hi, r3 hi.
+        let order = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
+        let mut i = 0;
+        while i + 32 <= out.len() {
+            let low = _mm256_packs_epi32(blend(i), blend(i + 8));
+            let high = _mm256_packs_epi32(blend(i + 16), blend(i + 24));
+            let bytes = _mm256_permutevar8x32_epi32(_mm256_packus_epi16(low, high), order);
+            _mm256_storeu_si256(out.as_mut_ptr().add(i).cast(), bytes);
+            i += 32;
+        }
+        i
+    }
+}
+
+/// Whole blocks of 16; returns how many bytes it wrote.
+#[target_feature(enable = "sse2")]
+unsafe fn lerp_sse2(a: &[u8], b: &[u8], [wa, wb, den, den2]: [f32; 4], out: &mut [u8]) -> usize {
+    unsafe {
+        let (wa, wb) = (_mm_set1_ps(wa), _mm_set1_ps(wb));
+        let (den, den2) = (_mm_set1_ps(den), _mm_set1_ps(den2));
+        let zero = _mm_setzero_si128();
+        let blend = |x: __m128i, y: __m128i| {
+            let s = _mm_add_ps(
+                _mm_mul_ps(_mm_cvtepi32_ps(x), wa),
+                _mm_mul_ps(_mm_cvtepi32_ps(y), wb),
+            );
+            _mm_cvttps_epi32(_mm_div_ps(_mm_add_ps(_mm_add_ps(s, s), den), den2))
+        };
+        // Four dwords of `x` (u16 lanes) and of `y`, blended.
+        let quarter = |x: __m128i, y: __m128i, high: bool| {
+            if high {
+                blend(_mm_unpackhi_epi16(x, zero), _mm_unpackhi_epi16(y, zero))
+            } else {
+                blend(_mm_unpacklo_epi16(x, zero), _mm_unpacklo_epi16(y, zero))
+            }
+        };
+        let mut i = 0;
+        while i + 16 <= out.len() {
+            let x = _mm_loadu_si128(a.as_ptr().add(i).cast());
+            let y = _mm_loadu_si128(b.as_ptr().add(i).cast());
+            let (xl, xh) = (_mm_unpacklo_epi8(x, zero), _mm_unpackhi_epi8(x, zero));
+            let (yl, yh) = (_mm_unpacklo_epi8(y, zero), _mm_unpackhi_epi8(y, zero));
+            let low = _mm_packs_epi32(quarter(xl, yl, false), quarter(xl, yl, true));
+            let high = _mm_packs_epi32(quarter(xh, yh, false), quarter(xh, yh, true));
+            _mm_storeu_si128(out.as_mut_ptr().add(i).cast(), _mm_packus_epi16(low, high));
+            i += 16;
+        }
+        i
+    }
+}
+
 /// `ln(sum(exp(a[i])))` without overflow (shifted by the maximum), built from
 /// [`reduce_max_f32`], [`exp_f32`] (error <= 3e-7) and [`reduce_sum_f32`]
 /// (blocks of 1024 added in `f64`; the final `ln` is exact to `f32`).

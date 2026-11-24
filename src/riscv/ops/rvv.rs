@@ -488,6 +488,67 @@ impl Rvv {
         let _ = (pq, po, n);
     }
 
+    /// `out[i] = (a[i] * (den - num) + b[i] * num) / den` rounded to the
+    /// nearest (halves up), same contract as `x86::reduce::lerp_u8`: bytes
+    /// widened to `f32` at LMUL 4 (`vzext.vf4`), blended, divided, truncated
+    /// and narrowed back. Exact.
+    ///
+    /// # Panics
+    /// If the lengths differ, `den` is 0 or over 32767, or `num > den`.
+    pub fn lerp_u8(self, a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+        crate::reduce_common::lerp_check(a, b, num, den, out);
+        let [wa, wb, d, d2] = crate::reduce_common::lerp_operands(num, den);
+        let (mut pa, mut pb, mut po, mut n) = (a.as_ptr(), b.as_ptr(), out.as_mut_ptr(), out.len());
+        if n == 0 {
+            return;
+        }
+        // SAFETY: token proves V; `lerp_check` makes the three lengths `n`; reads
+        // `n` bytes of `a` and `b`, writes `n` bytes of `out`.
+        unsafe {
+            rvv_asm!(
+                ".option push",
+                ".option arch, +v",
+                "vsetvli {t}, zero, e32, m4, ta, ma",
+                "vmv.v.x v12, {wa}",
+                "vmv.v.x v20, {wb}",
+                "vmv.v.x v24, {d}",
+                "vmv.v.x v28, {d2}",
+                "2:",
+                "vsetvli {vl}, {n}, e8, m1, ta, ma",
+                "vle8.v v1, ({a})",
+                "vle8.v v2, ({b})",
+                // e8/m1, e16/m2 and e32/m4 share the SEW/LMUL ratio, so `vl` stays.
+                "vsetvli zero, zero, e32, m4, ta, ma",
+                "vzext.vf4 v4, v1",
+                "vzext.vf4 v8, v2",
+                "vfcvt.f.xu.v v4, v4",
+                "vfcvt.f.xu.v v8, v8",
+                "vfmul.vv v4, v4, v12",
+                "vfmul.vv v8, v8, v20",
+                "vfadd.vv v4, v4, v8",
+                "vfadd.vv v4, v4, v4",
+                "vfadd.vv v4, v4, v24",
+                "vfdiv.vv v4, v4, v28",
+                "vfcvt.rtz.xu.f.v v4, v4",
+                "vsetvli zero, zero, e16, m2, ta, ma",
+                "vnsrl.wi v16, v4, 0",
+                "vsetvli zero, zero, e8, m1, ta, ma",
+                "vnsrl.wi v1, v16, 0",
+                "vse8.v v1, ({o})",
+                "sub {n}, {n}, {vl}",
+                "add {a}, {a}, {vl}",
+                "add {b}, {b}, {vl}",
+                "add {o}, {o}, {vl}",
+                "bnez {n}, 2b",
+                ".option pop",
+                a = inout(reg) pa, b = inout(reg) pb, o = inout(reg) po, n = inout(reg) n,
+                wa = in(reg) wa.to_bits(), wb = in(reg) wb.to_bits(), d = in(reg) d.to_bits(),
+                d2 = in(reg) d2.to_bits(), vl = out(reg) _, t = out(reg) _
+            );
+        }
+        let _ = (pa, pb, po, n);
+    }
+
     /// `out[i] = sum_k(signal[i + k] * taps[k])`, same contract as
     /// `x86::reduce::sliding_dot_f32`: strip-mined across the outputs, each
     /// tap broadcast and fused into the whole strip (`vfmacc.vv`), k ascending.

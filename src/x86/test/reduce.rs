@@ -359,6 +359,43 @@ fn sliding_dot_matches_the_definition_on_every_tier() {
     }
 }
 
+/// Every weight of a small `den`, a few of a big one, all byte pairs at
+/// lengths around each tier's block: bit for bit the integer definition.
+#[test]
+fn lerp_matches_the_definition_on_every_tier() {
+    let a: Vec<u8> = (0..=255u8).flat_map(|x| [x; 256]).collect();
+    let b: Vec<u8> = (0..=255u8).cycle().take(65536).collect();
+    let cases = (0..=7).map(|n| (n, 7)).chain([
+        (0, 1),
+        (1, 1),
+        (333, 1000),
+        (999, 1000),
+        (1, 32767),
+        (16384, 32767),
+        (32766, 32767),
+    ]);
+    for t in tiers() {
+        for (num, den) in cases.clone() {
+            for len in [0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 65536] {
+                let mut out = vec![0xAA; len];
+                lerp_u8_with(t, &a[..len], &b[..len], num, den, &mut out);
+                for (i, &got) in out.iter().enumerate() {
+                    let sum =
+                        u32::from(a[i]) * u32::from(den - num) + u32::from(b[i]) * u32::from(num);
+                    let want = (2 * sum + u32::from(den)) / (2 * u32::from(den));
+                    assert_eq!(u32::from(got), want, "{t:?} {num}/{den} len={len} i={i}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "lerp_u8")]
+fn lerp_wants_num_at_most_den() {
+    lerp_u8(&[0; 4], &[0; 4], 8, 7, &mut [0; 4]);
+}
+
 #[test]
 fn sliding_dot_propagates_nan() {
     for t in tiers() {

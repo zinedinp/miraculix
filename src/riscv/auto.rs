@@ -269,6 +269,20 @@ pub fn sliding_dot_f32(signal: &[f32], taps: &[f32], out: &mut [f32]) {
     crate::reduce_common::sliding_scalar(signal, taps, out, 0);
 }
 
+/// `out[i] = (a[i] * (den - num) + b[i] * num) / den` rounded to the nearest
+/// (halves up). Same contract as `x86::reduce::lerp_u8`: exact, RVV
+/// strip-mined (bytes widened to `f32` lanes), portable code otherwise.
+///
+/// # Panics
+/// If the lengths differ, `den` is 0 or over 32767, or `num > den`.
+pub fn lerp_u8(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+    if let Some(t) = rvv() {
+        return t.lerp_u8(a, b, num, den, out);
+    }
+    crate::reduce_common::lerp_check(a, b, num, den, out);
+    crate::reduce_common::lerp_scalar(a, b, num, den, out, 0);
+}
+
 pub use crate::reduce_common::{GEMM_MR, GEMM_NR};
 
 /// GEMM micro-kernel, same contract as `x86::reduce::gemm_f32_kernel`

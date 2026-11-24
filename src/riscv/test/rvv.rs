@@ -170,6 +170,31 @@ fn sliding_dot_is_the_definition() {
 }
 
 #[test]
+fn lerp_is_the_definition() {
+    let Some(t) = Rvv::detect() else { return };
+    let a: Vec<u8> = (0..=255u8).flat_map(|x| [x; 256]).collect();
+    let b: Vec<u8> = (0..=255u8).cycle().take(65536).collect();
+    for (num, den) in [
+        (0, 7),
+        (3, 7),
+        (7, 7),
+        (333, 1000),
+        (1, 32767),
+        (32766, 32767),
+    ] {
+        for n in lengths().into_iter().chain([65536]) {
+            let mut out = vec![0xAA; n];
+            t.lerp_u8(&a[..n], &b[..n], num, den, &mut out);
+            for (i, &got) in out.iter().enumerate() {
+                let sum = u32::from(a[i]) * u32::from(den - num) + u32::from(b[i]) * u32::from(num);
+                let want = (2 * sum + u32::from(den)) / (2 * u32::from(den));
+                assert_eq!(u32::from(got), want, "{num}/{den} n {n} i {i}");
+            }
+        }
+    }
+}
+
+#[test]
 fn dot_and_affine_match_the_portable_code() {
     let Some(t) = Rvv::detect() else { return };
     for n in lengths() {

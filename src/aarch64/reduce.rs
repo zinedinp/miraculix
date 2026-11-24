@@ -408,6 +408,64 @@ unsafe fn sliding_neon(signal: &[f32], taps: &[f32], out: &mut [f32]) -> usize {
     }
 }
 
+/// `out[i] = (a[i] * (den - num) + b[i] * num) / den` rounded to the nearest
+/// (halves up). Same contract as `x86::reduce::lerp_u8`: exact, 16 bytes a
+/// loop (four `f32` vectors) on Neon.
+///
+/// # Panics
+/// If the lengths differ, `den` is 0 or over 32767, or `num > den`.
+pub fn lerp_u8(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+    lerp_u8_with(hw(), a, b, num, den, out)
+}
+
+#[doc(hidden)]
+pub fn lerp_u8_with(neon: bool, a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+    crate::reduce_common::lerp_check(a, b, num, den, out);
+    let w = crate::reduce_common::lerp_operands(num, den);
+    // SAFETY: see `bf16_to_f32_with`; `lerp_check` makes the three lengths equal.
+    let done = if neon {
+        unsafe { lerp_neon(a, b, w, out) }
+    } else {
+        0
+    };
+    crate::reduce_common::lerp_scalar(a, b, num, den, out, done);
+}
+
+/// Whole blocks of 16; returns how many bytes it wrote.
+#[target_feature(enable = "neon")]
+unsafe fn lerp_neon(a: &[u8], b: &[u8], [wa, wb, den, den2]: [f32; 4], out: &mut [u8]) -> usize {
+    unsafe {
+        let (wa, wb) = (vdupq_n_f32(wa), vdupq_n_f32(wb));
+        let (den, den2) = (vdupq_n_f32(den), vdupq_n_f32(den2));
+        let blend = |x: uint32x4_t, y: uint32x4_t| {
+            let s = vaddq_f32(
+                vmulq_f32(vcvtq_f32_u32(x), wa),
+                vmulq_f32(vcvtq_f32_u32(y), wb),
+            );
+            vmovn_u32(vcvtq_u32_f32(vdivq_f32(
+                vaddq_f32(vaddq_f32(s, s), den),
+                den2,
+            )))
+        };
+        // Eight u16 lanes of `x` and of `y`, blended.
+        let half = |x: uint16x8_t, y: uint16x8_t| {
+            let low = blend(vmovl_u16(vget_low_u16(x)), vmovl_u16(vget_low_u16(y)));
+            let high = blend(vmovl_high_u16(x), vmovl_high_u16(y));
+            vmovn_u16(vcombine_u16(low, high))
+        };
+        let mut i = 0;
+        while i + 16 <= out.len() {
+            let x = vld1q_u8(a.as_ptr().add(i));
+            let y = vld1q_u8(b.as_ptr().add(i));
+            let low = half(vmovl_u8(vget_low_u8(x)), vmovl_u8(vget_low_u8(y)));
+            let high = half(vmovl_high_u8(x), vmovl_high_u8(y));
+            vst1q_u8(out.as_mut_ptr().add(i), vcombine_u8(low, high));
+            i += 16;
+        }
+        i
+    }
+}
+
 #[target_feature(enable = "neon")]
 unsafe fn dot_neon(a: &[f32], b: &[f32]) -> (f32, usize) {
     unsafe {

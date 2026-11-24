@@ -470,6 +470,7 @@ lowest index.
 | bfloat16 -> `f32` slice | `x86::reduce::bf16_to_f32`, `aarch64::reduce::bf16_to_f32`, `riscv::auto::bf16_to_f32` (also `formats::MiniFloat::Bf16`) |
 | Dot product | `dot_f32(a, b) -> f32` (fused on AVX-512F, AVX2+FMA, Neon, RVV) |
 | FIR filter / cross-correlation | `sliding_dot_f32(signal, taps, &mut out)`: `out[i] = sum_k signal[i + k] * taps[k]`, one dispatch, vectorised across the outputs |
+| Blend bytes (texture frames, crossfades) | `lerp_u8(a, b, num, den, &mut out)`: `(a * (den - num) + b * num) / den` rounded to the nearest, exact on every tier (`den <= 32767`) |
 
 On x86 each of these has AVX and SSE2 rungs below AVX2 (SSE2 is the x86_64
 baseline), so a CPU without AVX2 still runs vector code, not scalar. The `auto_up` multiply-add

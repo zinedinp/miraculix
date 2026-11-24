@@ -225,6 +225,48 @@ pub(crate) fn gemm_kernel_scalar(
     }
 }
 
+// -------------------------------------------------------------- byte blend
+
+/// The biggest `den` of `lerp_u8`: every sum `2 * (a * (den - num) + b * num) + den`
+/// stays below 2^24, exact in `f32`.
+pub(crate) const LERP_MAX_DEN: u16 = 32767;
+
+/// Checks the arguments of `lerp_u8`.
+#[inline]
+pub(crate) fn lerp_check(a: &[u8], b: &[u8], num: u16, den: u16, out: &[u8]) {
+    assert!(
+        a.len() == b.len() && b.len() == out.len(),
+        "lerp_u8: lengths {} {} {}",
+        a.len(),
+        b.len(),
+        out.len()
+    );
+    assert!(
+        (1..=LERP_MAX_DEN).contains(&den) && num <= den,
+        "lerp_u8: {num} / {den}"
+    );
+}
+
+/// Portable `lerp_u8` from `first` on.
+pub(crate) fn lerp_scalar(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8], first: usize) {
+    let (num, den) = (u32::from(num), u32::from(den));
+    for ((&x, &y), o) in a[first..].iter().zip(&b[first..]).zip(&mut out[first..]) {
+        let sum = u32::from(x) * (den - num) + u32::from(y) * num;
+        *o = ((2 * sum + den) / (2 * den)) as u8;
+    }
+}
+
+/// The `f32` operands of the vector `lerp_u8`: weights of `a` and `b`, `den`, `2 * den`.
+/// Each lane computes `trunc((2 * (a * wa + b * wb) + den) / (2 * den))`: the products,
+/// sums and the doubling are exact below 2^24, and the one rounded division is
+/// never off by enough to cross an integer (a non-integer quotient under 256 is at
+/// least `1 / (2 * den)` from one, more than half an ulp).
+#[inline]
+pub(crate) fn lerp_operands(num: u16, den: u16) -> [f32; 4] {
+    let (num, den) = (f32::from(num), f32::from(den));
+    [den - num, num, den, 2.0 * den]
+}
+
 // ------------------------------------------------------------- sliding dot
 
 /// Checks the slice lengths of `sliding_dot_f32`: every window
