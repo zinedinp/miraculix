@@ -35,10 +35,39 @@
 
 use super::{Feature, FeatureSet, detect_features};
 
-/// Execution tier. Crate-visible so tests can run every rung the CPU has.
+/// A dispatch decision for the `*_with` functions, resolved once.
+///
+/// A `Tier` is a **proof**: the only ways to get one are [`best_tier`] and
+/// [`available_tiers`], which hand out only tiers this CPU can run. That
+/// makes every `*_with(tier, ..)` call safe, and lets a hot loop skip the
+/// per-call feature check:
+///
+/// ```
+/// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+/// use miraculix::x86::reduce;
+/// let tier = reduce::best_tier(); // once, at startup
+/// let rows = [[1.0f32; 64]; 4];
+/// for r in &rows {
+///     let _ = reduce::dot_f32_with(tier, r, r); // no detection here
+/// }
+/// # }
+/// ```
+///
+/// It cannot be built by hand, so it cannot claim a tier the CPU lacks:
+///
+/// ```compile_fail
+/// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+/// let forged = miraculix::x86::reduce::Tier(Default::default());
+/// # }
+/// # #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+/// # compile_error!("x86 only");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[doc(hidden)]
-pub enum Tier {
+pub struct Tier(TierKind);
+
+/// The rung behind a [`Tier`]. Private, so a `Tier` cannot be forged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TierKind {
     Scalar,
     /// Every x86_64: 128-bit, no FMA.
     Sse2,
@@ -50,39 +79,41 @@ pub enum Tier {
     Avx512,
 }
 
-#[doc(hidden)]
+/// The fastest [`Tier`] this CPU can run (from the cached
+/// [`super::detect_features`]).
 pub fn best_tier() -> Tier {
     tier_of(detect_features())
 }
 
 fn tier_of(f: FeatureSet) -> Tier {
-    if f.contains(Feature::Avx512f) {
-        Tier::Avx512
+    Tier(if f.contains(Feature::Avx512f) {
+        TierKind::Avx512
     } else if f.contains(Feature::Avx2) && f.contains(Feature::Fma) {
-        Tier::Avx2Fma
+        TierKind::Avx2Fma
     } else if f.contains(Feature::Avx2) {
-        Tier::Avx2
+        TierKind::Avx2
     } else if f.contains(Feature::Avx) {
-        Tier::Avx
+        TierKind::Avx
     } else if f.contains(Feature::Sse2) {
-        Tier::Sse2
+        TierKind::Sse2
     } else {
-        Tier::Scalar
-    }
+        TierKind::Scalar
+    })
 }
 
-/// Tiers the running CPU can execute, best last. For tests and benchmarks.
-#[doc(hidden)]
+/// Every [`Tier`] this CPU can run, slowest first (`None` where the CPU
+/// lacks it). For tests and benchmarks that compare rungs.
 pub fn available_tiers() -> [Option<Tier>; 6] {
     let f = detect_features();
     [
-        Some(Tier::Scalar),
-        f.contains(Feature::Sse2).then_some(Tier::Sse2),
-        f.contains(Feature::Avx).then_some(Tier::Avx),
-        f.contains(Feature::Avx2).then_some(Tier::Avx2),
-        (f.contains(Feature::Avx2) && f.contains(Feature::Fma)).then_some(Tier::Avx2Fma),
-        f.contains(Feature::Avx512f).then_some(Tier::Avx512),
+        Some(TierKind::Scalar),
+        f.contains(Feature::Sse2).then_some(TierKind::Sse2),
+        f.contains(Feature::Avx).then_some(TierKind::Avx),
+        f.contains(Feature::Avx2).then_some(TierKind::Avx2),
+        (f.contains(Feature::Avx2) && f.contains(Feature::Fma)).then_some(TierKind::Avx2Fma),
+        f.contains(Feature::Avx512f).then_some(TierKind::Avx512),
     ]
+    .map(|k| k.map(Tier))
 }
 
 #[cfg(target_arch = "x86")]
@@ -101,16 +132,17 @@ pub fn bf16_to_f32(a: &[u16], out: &mut [f32]) {
     bf16_to_f32_with(best_tier(), a, out)
 }
 
-#[doc(hidden)]
+/// [`bf16_to_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn bf16_to_f32_with(tier: Tier, a: &[u16], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
-    let done = match tier {
-        // SAFETY (all `unsafe` below): the caller picked a tier the CPU has
-        // (`best_tier` / `available_tiers`), and slice bounds are respected.
-        Tier::Avx512 => unsafe { bf16_avx512(a, out) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { bf16_avx2(a, out) },
-        Tier::Avx | Tier::Sse2 => unsafe { bf16_sse2(a, out) },
-        Tier::Scalar => 0,
+    let done = match tier.0 {
+        // SAFETY (all `unsafe` below): a `Tier` only comes from `best_tier` /
+        // `available_tiers`, which hand out tiers the CPU has (private
+        // field, so it cannot be forged), and slice bounds are respected.
+        TierKind::Avx512 => unsafe { bf16_avx512(a, out) },
+        TierKind::Avx2 | TierKind::Avx2Fma => unsafe { bf16_avx2(a, out) },
+        TierKind::Avx | TierKind::Sse2 => unsafe { bf16_sse2(a, out) },
+        TierKind::Scalar => 0,
     };
     for i in done..a.len() {
         out[i] = f32::from_bits((a[i] as u32) << 16);
@@ -181,14 +213,14 @@ pub fn reduce_sum_f32(a: &[f32]) -> f32 {
     reduce_sum_f32_with(best_tier(), a)
 }
 
-#[doc(hidden)]
+/// [`reduce_sum_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn reduce_sum_f32_with(tier: Tier, a: &[f32]) -> f32 {
-    let (mut s, done) = match tier {
+    let (mut s, done) = match tier.0 {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
-        Tier::Avx512 => unsafe { sum_avx512(a) },
-        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { sum_avx(a) },
-        Tier::Sse2 => unsafe { sum_sse2(a) },
-        Tier::Scalar => (0.0, 0),
+        TierKind::Avx512 => unsafe { sum_avx512(a) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe { sum_avx(a) },
+        TierKind::Sse2 => unsafe { sum_sse2(a) },
+        TierKind::Scalar => (0.0, 0),
     };
     let mut lanes = [0f32; 4];
     for (i, &x) in a[done..].iter().enumerate() {
@@ -361,14 +393,14 @@ pub fn reduce_min_f32(a: &[f32]) -> f32 {
     reduce_min_f32_with(best_tier(), a)
 }
 
-#[doc(hidden)]
+/// [`reduce_max_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn reduce_max_f32_with(tier: Tier, a: &[f32]) -> f32 {
-    let (mut m, done) = match tier {
+    let (mut m, done) = match tier.0 {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
-        Tier::Avx512 => unsafe { max_avx512(a) },
-        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { max_avx(a) },
-        Tier::Sse2 => unsafe { max_sse2(a) },
-        Tier::Scalar => (f32::NEG_INFINITY, 0),
+        TierKind::Avx512 => unsafe { max_avx512(a) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe { max_avx(a) },
+        TierKind::Sse2 => unsafe { max_sse2(a) },
+        TierKind::Scalar => (f32::NEG_INFINITY, 0),
     };
     for &x in &a[done..] {
         if x > m {
@@ -378,14 +410,14 @@ pub fn reduce_max_f32_with(tier: Tier, a: &[f32]) -> f32 {
     m
 }
 
-#[doc(hidden)]
+/// [`reduce_min_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn reduce_min_f32_with(tier: Tier, a: &[f32]) -> f32 {
-    let (mut m, done) = match tier {
+    let (mut m, done) = match tier.0 {
         // SAFETY: as above.
-        Tier::Avx512 => unsafe { min_avx512(a) },
-        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { min_avx(a) },
-        Tier::Sse2 => unsafe { min_sse2(a) },
-        Tier::Scalar => (f32::INFINITY, 0),
+        TierKind::Avx512 => unsafe { min_avx512(a) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe { min_avx(a) },
+        TierKind::Sse2 => unsafe { min_sse2(a) },
+        TierKind::Scalar => (f32::INFINITY, 0),
     };
     for &x in &a[done..] {
         if x < m {
@@ -403,19 +435,19 @@ pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
     argmax_f32_with(best_tier(), a)
 }
 
-#[doc(hidden)]
+/// [`argmax_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn argmax_f32_with(tier: Tier, a: &[f32]) -> Option<(usize, f32)> {
     let m = reduce_max_f32_with(tier, a);
     find_first_eq(tier, a, m).map(|i| (i, m))
 }
 
 fn find_first_eq(tier: Tier, a: &[f32], v: f32) -> Option<usize> {
-    let done = match tier {
+    let done = match tier.0 {
         // SAFETY: as above.
-        Tier::Avx512 => unsafe { find_avx512(a, v) },
-        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { find_avx(a, v) },
-        Tier::Sse2 => unsafe { find_sse2(a, v) },
-        Tier::Scalar => Ok(0),
+        TierKind::Avx512 => unsafe { find_avx512(a, v) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe { find_avx(a, v) },
+        TierKind::Sse2 => unsafe { find_sse2(a, v) },
+        TierKind::Scalar => Ok(0),
     };
     match done {
         Ok(start) => a[start..].iter().position(|&x| x == v).map(|p| p + start),
@@ -494,15 +526,15 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
 
 use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P, exp_scalar};
 
-#[doc(hidden)]
+/// [`exp_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn exp_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
-    let done = match tier {
+    let done = match tier.0 {
         // SAFETY: as above (`Avx2Fma` requires FMA, which `available_tiers` checks).
-        Tier::Avx512 => unsafe { exp_avx512(a, out) },
-        Tier::Avx2Fma => unsafe { exp_avx2_fma(a, out) },
-        Tier::Avx | Tier::Avx2 | Tier::Sse2 => unsafe { exp_sse2(a, out) },
-        Tier::Scalar => 0,
+        TierKind::Avx512 => unsafe { exp_avx512(a, out) },
+        TierKind::Avx2Fma => unsafe { exp_avx2_fma(a, out) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Sse2 => unsafe { exp_sse2(a, out) },
+        TierKind::Scalar => 0,
     };
     for i in done..a.len() {
         out[i] = exp_scalar(a[i]);
@@ -659,16 +691,16 @@ pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
     affine_u16_f32_with(best_tier(), q, a, b, out)
 }
 
-#[doc(hidden)]
+/// [`affine_u16_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn affine_u16_f32_with(tier: Tier, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
     assert_eq!(q.len(), out.len());
-    let done = match tier {
+    let done = match tier.0 {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
-        Tier::Avx512 => unsafe { affine_avx512(q, a, b, out) },
-        Tier::Avx2Fma => unsafe { affine_avx2_fma(q, a, b, out) },
-        Tier::Avx2 => unsafe { affine_avx2(q, a, b, out) },
-        Tier::Avx | Tier::Sse2 => unsafe { affine_sse2(q, a, b, out) },
-        Tier::Scalar => 0,
+        TierKind::Avx512 => unsafe { affine_avx512(q, a, b, out) },
+        TierKind::Avx2Fma => unsafe { affine_avx2_fma(q, a, b, out) },
+        TierKind::Avx2 => unsafe { affine_avx2(q, a, b, out) },
+        TierKind::Avx | TierKind::Sse2 => unsafe { affine_sse2(q, a, b, out) },
+        TierKind::Scalar => 0,
     };
     for i in done..q.len() {
         out[i] = a * (q[i] as f32) + b;
@@ -754,16 +786,16 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     dot_f32_with(best_tier(), a, b)
 }
 
-#[doc(hidden)]
+/// [`dot_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn dot_f32_with(tier: Tier, a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
-    let (mut s, done) = match tier {
+    let (mut s, done) = match tier.0 {
         // SAFETY: tier chosen from detection; see `bf16_to_f32_with`.
-        Tier::Avx512 => unsafe { dot_avx512(a, b) },
-        Tier::Avx2Fma => unsafe { dot_avx2_fma(a, b) },
-        Tier::Avx | Tier::Avx2 => unsafe { dot_avx(a, b) },
-        Tier::Sse2 => unsafe { dot_sse2(a, b) },
-        Tier::Scalar => (0.0, 0),
+        TierKind::Avx512 => unsafe { dot_avx512(a, b) },
+        TierKind::Avx2Fma => unsafe { dot_avx2_fma(a, b) },
+        TierKind::Avx | TierKind::Avx2 => unsafe { dot_avx(a, b) },
+        TierKind::Sse2 => unsafe { dot_sse2(a, b) },
+        TierKind::Scalar => (0.0, 0),
     };
     let mut lanes = [0f32; 4];
     for i in done..a.len() {
@@ -894,17 +926,17 @@ pub fn sliding_dot_f32(signal: &[f32], taps: &[f32], out: &mut [f32]) {
     sliding_dot_f32_with(best_tier(), signal, taps, out)
 }
 
-#[doc(hidden)]
+/// [`sliding_dot_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn sliding_dot_f32_with(tier: Tier, signal: &[f32], taps: &[f32], out: &mut [f32]) {
     crate::reduce_common::sliding_check(signal, taps, out);
-    let done = match tier {
+    let done = match tier.0 {
         // SAFETY: tier chosen from detection; `sliding_check` keeps every
         // window `signal[i..i + taps.len()]` with `i < out.len()` in bounds.
-        Tier::Avx512 => unsafe { sliding_avx512(signal, taps, out) },
-        Tier::Avx2Fma => unsafe { sliding_avx2_fma(signal, taps, out) },
-        Tier::Avx | Tier::Avx2 => unsafe { sliding_avx(signal, taps, out) },
-        Tier::Sse2 => unsafe { sliding_sse2(signal, taps, out) },
-        Tier::Scalar => 0,
+        TierKind::Avx512 => unsafe { sliding_avx512(signal, taps, out) },
+        TierKind::Avx2Fma => unsafe { sliding_avx2_fma(signal, taps, out) },
+        TierKind::Avx | TierKind::Avx2 => unsafe { sliding_avx(signal, taps, out) },
+        TierKind::Sse2 => unsafe { sliding_sse2(signal, taps, out) },
+        TierKind::Scalar => 0,
     };
     crate::reduce_common::sliding_scalar(signal, taps, &mut out[done..], done);
 }
@@ -999,16 +1031,16 @@ pub fn lerp_u8(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
     lerp_u8_with(best_tier(), a, b, num, den, out)
 }
 
-#[doc(hidden)]
+/// [`lerp_u8`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn lerp_u8_with(tier: Tier, a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
     crate::reduce_common::lerp_check(a, b, num, den, out);
     let w = crate::reduce_common::lerp_operands(num, den);
-    let done = match tier {
+    let done = match tier.0 {
         // SAFETY: tier chosen from detection; `lerp_check` makes the three lengths equal.
-        Tier::Avx512 => unsafe { lerp_avx512(a, b, w, out) },
-        Tier::Avx2 | Tier::Avx2Fma => unsafe { lerp_avx2(a, b, w, out) },
-        Tier::Avx | Tier::Sse2 => unsafe { lerp_sse2(a, b, w, out) },
-        Tier::Scalar => 0,
+        TierKind::Avx512 => unsafe { lerp_avx512(a, b, w, out) },
+        TierKind::Avx2 | TierKind::Avx2Fma => unsafe { lerp_avx2(a, b, w, out) },
+        TierKind::Avx | TierKind::Sse2 => unsafe { lerp_sse2(a, b, w, out) },
+        TierKind::Scalar => 0,
     };
     crate::reduce_common::lerp_scalar(a, b, num, den, out, done);
 }
@@ -1114,7 +1146,7 @@ pub fn logsumexp_f32(a: &[f32]) -> f32 {
     logsumexp_f32_with(best_tier(), a)
 }
 
-#[doc(hidden)]
+/// [`logsumexp_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn logsumexp_f32_with(tier: Tier, a: &[f32]) -> f32 {
     crate::reduce_common::logsumexp_with(
         a,
@@ -1132,7 +1164,7 @@ pub fn log_softmax_f32(a: &[f32], out: &mut [f32]) {
     log_softmax_f32_with(best_tier(), a, out)
 }
 
-#[doc(hidden)]
+/// [`log_softmax_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn log_softmax_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
     let l = logsumexp_f32_with(tier, a);
@@ -1161,7 +1193,7 @@ pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR
     gemm_f32_kernel_with(best_tier(), kc, a, b, acc)
 }
 
-#[doc(hidden)]
+/// [`gemm_f32_kernel`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn gemm_f32_kernel_with(
     tier: Tier,
     kc: usize,
@@ -1170,13 +1202,13 @@ pub fn gemm_f32_kernel_with(
     acc: &mut [[f32; GEMM_NR]; GEMM_MR],
 ) {
     crate::reduce_common::gemm_check(kc, a, b);
-    match tier {
+    match tier.0 {
         // SAFETY: tier chosen from detection; lengths checked above.
-        Tier::Avx512 => unsafe { gemm_kernel_avx512(kc, a.as_ptr(), b.as_ptr(), acc) },
-        Tier::Avx2Fma => unsafe { gemm_kernel_avx2_fma(kc, a.as_ptr(), b.as_ptr(), acc) },
-        Tier::Avx | Tier::Avx2 => unsafe { gemm_kernel_avx(kc, a.as_ptr(), b.as_ptr(), acc) },
-        Tier::Sse2 => unsafe { gemm_kernel_sse2(kc, a.as_ptr(), b.as_ptr(), acc) },
-        Tier::Scalar => crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc),
+        TierKind::Avx512 => unsafe { gemm_kernel_avx512(kc, a.as_ptr(), b.as_ptr(), acc) },
+        TierKind::Avx2Fma => unsafe { gemm_kernel_avx2_fma(kc, a.as_ptr(), b.as_ptr(), acc) },
+        TierKind::Avx | TierKind::Avx2 => unsafe { gemm_kernel_avx(kc, a.as_ptr(), b.as_ptr(), acc) },
+        TierKind::Sse2 => unsafe { gemm_kernel_sse2(kc, a.as_ptr(), b.as_ptr(), acc) },
+        TierKind::Scalar => crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc),
     }
 }
 
@@ -1316,16 +1348,16 @@ pub fn compress_gt_f32(a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
     compress_gt_f32_with(best_tier(), a, threshold, out)
 }
 
-#[doc(hidden)]
+/// [`compress_gt_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn compress_gt_f32_with(tier: Tier, a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
     assert!(out.len() >= a.len(), "out must hold a.len() indices");
-    let (mut n, done) = match tier {
+    let (mut n, done) = match tier.0 {
         // SAFETY: as above. The kernels write at most `done` indices plus 16 slack lanes
         // that stay below `a.len() <= out.len()` (see `compress_avx512`).
-        Tier::Avx512 => unsafe { compress_avx512(a, threshold, out) },
-        Tier::Avx | Tier::Avx2 | Tier::Avx2Fma => unsafe { compress_avx(a, threshold, out) },
-        Tier::Sse2 => unsafe { compress_sse2(a, threshold, out) },
-        Tier::Scalar => (0, 0),
+        TierKind::Avx512 => unsafe { compress_avx512(a, threshold, out) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe { compress_avx(a, threshold, out) },
+        TierKind::Sse2 => unsafe { compress_sse2(a, threshold, out) },
+        TierKind::Scalar => (0, 0),
     };
     for (j, &x) in a[done..].iter().enumerate() {
         if x > threshold {
@@ -1411,7 +1443,7 @@ pub fn topk_f32(a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
     topk_f32_with(best_tier(), a, idx, val)
 }
 
-#[doc(hidden)]
+/// [`topk_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn topk_f32_with(tier: Tier, a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
     crate::reduce_common::topk_with(a, idx, val, |chunk, thr, buf| {
         compress_gt_f32_with(tier, chunk, thr, buf)

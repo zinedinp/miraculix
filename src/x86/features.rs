@@ -191,30 +191,158 @@ struct CpuidLeaves {
     extended_processor: Option<ExtendedProcessorFeatureIdentifiers>,
     /// Leaf 7 subleaf 1 EAX: SHA512/SM3/SM4 bits. `raw-cpuid` does not fold
     /// these into `ExtendedFeatures`, so we read this subleaf directly (see
-    /// `super::tiers::Avx10::version` for precedent). Querying a non-implemented
-    /// subleaf is well-defined and safe.
+    /// `super::tiers::Avx10::version` for precedent). `0` unless leaf 7 and
+    /// its subleaf 1 both exist (see [`Self::read_leaf7_sub1`]).
     sha_sm_leaf_eax: u32,
+    /// `true` if leaf 7 reports at least one extra subleaf (leaf 7.0 `EAX >= 1`).
+    /// Gates every bit `raw-cpuid` reads from leaf 7.1 (AVX-VNNI, AVX512-BF16,
+    /// AVX-IFMA, AVX-NE-CONVERT, AVX-VNNI-INT8/16, AVX10).
+    leaf7_sub1: bool,
+    /// Register state the **OS** saves and restores (`XCR0`), read with
+    /// `XGETBV`; `0` when `CPUID.1:ECX.OSXSAVE` is clear. A CPUID bit only
+    /// says the silicon has an instruction; without the matching XCR0 bits
+    /// the OS has not enabled that state and the instruction raises `#UD`.
+    xcr0: u64,
+}
+
+/// `XCR0` bits 1 (SSE/XMM) and 2 (AVX/YMM upper halves).
+const XCR0_AVX: u64 = 0b110;
+/// `XCR0` bits 5 (opmask `k0..k7`), 6 (ZMM0-15 upper halves), 7 (ZMM16-31),
+/// on top of [`XCR0_AVX`].
+const XCR0_AVX512: u64 = XCR0_AVX | 0b1110_0000;
+/// `XCR0` bits 17 (`XTILECFG`) and 18 (`XTILEDATA`).
+const XCR0_AMX: u64 = (1 << 17) | (1 << 18);
+
+/// `XGETBV` with `ECX = 0`: the whole of `XCR0`.
+///
+/// # Safety
+/// `CPUID.1:ECX.OSXSAVE` is set (otherwise `XGETBV` raises `#UD`).
+unsafe fn xgetbv0() -> u64 {
+    let (lo, hi): (u32, u32);
+    // SAFETY: the caller's contract. Reads a control register, no memory.
+    unsafe {
+        core::arch::asm!(
+            "xgetbv",
+            in("ecx") 0u32,
+            out("eax") lo,
+            out("edx") hi,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    (u64::from(hi) << 32) | u64::from(lo)
 }
 
 impl CpuidLeaves {
     fn read() -> Self {
         let cpuid = CpuId::new();
+        let feature_info = cpuid.get_feature_info();
+        let (leaf7_sub1, sha_sm_leaf_eax) = Self::read_leaf7_sub1();
+        let os_xsave = feature_info.as_ref().is_some_and(FeatureInfo::has_oxsave);
         Self {
-            feature_info: cpuid.get_feature_info(),
+            feature_info,
             extended_features: cpuid.get_extended_feature_info(),
             extended_processor: cpuid.get_extended_processor_and_feature_identifiers(),
-            sha_sm_leaf_eax: Self::read_sha_sm_leaf(),
+            sha_sm_leaf_eax,
+            leaf7_sub1,
+            // SAFETY: OSXSAVE set means the OS enabled XGETBV (CR4.OSXSAVE).
+            xcr0: if os_xsave { unsafe { xgetbv0() } } else { 0 },
         }
     }
 
-    fn read_sha_sm_leaf() -> u32 {
-        use crate::x86::arch::__cpuid_count;
+    /// `(subleaf 1 exists, leaf 7.1 EAX)`. Intel answers a leaf above the
+    /// maximum with the **highest basic leaf's** data, so on a CPU without
+    /// leaf 7 a blind `cpuid(7, 1)` returns unrelated bits (on a Core 2,
+    /// leaf 0xA's perfmon version, which would read as SM3).
+    fn read_leaf7_sub1() -> (bool, u32) {
+        use crate::x86::arch::{__cpuid, __cpuid_count};
 
-        __cpuid_count(7, 1).eax
+        if __cpuid(0).eax < 7 || __cpuid_count(7, 0).eax < 1 {
+            return (false, 0);
+        }
+        (true, __cpuid_count(7, 1).eax)
+    }
+
+    /// The silicon has `feature` **and** the OS has enabled the register
+    /// state it needs (same rule as `std::is_x86_feature_detected!`).
+    fn supports(&self, feature: Feature) -> bool {
+        self.cpu_has(feature) && self.os_enables(feature)
+    }
+
+    /// XCR0 gate per feature. VEX-encoded (YMM) extensions need AVX state,
+    /// EVEX ones need AVX-512 state, AMX needs tile state. Legacy-SSE-encoded
+    /// extensions (SSE*, AES, PCLMULQDQ, SHA, GFNI's 128-bit forms) need none.
+    fn os_enables(&self, feature: Feature) -> bool {
+        let need = match feature {
+            Feature::Avx
+            | Feature::Avx2
+            | Feature::Fma
+            | Feature::F16c
+            | Feature::Fma4
+            | Feature::Xop
+            | Feature::Vaes
+            | Feature::Vpclmulqdq
+            | Feature::AvxVnni
+            | Feature::AvxIfma
+            | Feature::AvxNeConvert
+            | Feature::AvxVnniInt8
+            | Feature::AvxVnniInt16
+            | Feature::Sha512
+            | Feature::Sm3
+            | Feature::Sm4 => XCR0_AVX,
+            Feature::Avx512f
+            | Feature::Avx512cd
+            | Feature::Avx512dq
+            | Feature::Avx512bw
+            | Feature::Avx512vl
+            | Feature::Avx512er
+            | Feature::Avx512pf
+            | Feature::Avx512ifma
+            | Feature::Avx512vbmi
+            | Feature::Avx5124vnniw
+            | Feature::Avx5124fmaps
+            | Feature::Avx512vbmi2
+            | Feature::Avx512vnni
+            | Feature::Avx512bitalg
+            | Feature::Avx512vpopcntdq
+            | Feature::Avx512bf16
+            | Feature::Avx512vp2intersect
+            | Feature::Avx512fp16
+            | Feature::Avx10 => {
+                // macOS enables AVX-512 state lazily: XCR0 lacks the bits
+                // until the first AVX-512 instruction traps, and the kernel
+                // then turns them on for the thread. CPUID is the authority
+                // there, as long as AVX state itself is on.
+                if cfg!(target_vendor = "apple") {
+                    XCR0_AVX
+                } else {
+                    XCR0_AVX512
+                }
+            }
+            // Linux also requires `arch_prctl(ARCH_REQ_XCOMP_PERM)` before
+            // the first tile instruction; this crate has no AMX ops yet.
+            Feature::AmxTile | Feature::AmxInt8 | Feature::AmxBf16 => XCR0_AMX,
+            _ => 0,
+        };
+        self.xcr0 & need == need
     }
 
     /// Per-feature leaf check. `match` (not if-chain) so missing arms fail compile.
-    fn supports(&self, feature: Feature) -> bool {
+    fn cpu_has(&self, feature: Feature) -> bool {
+        // Bits `raw-cpuid` reads from leaf 7 subleaf 1, which it queries
+        // without checking leaf 7.0 EAX.
+        if matches!(
+            feature,
+            Feature::AvxVnni
+                | Feature::Avx512bf16
+                | Feature::AvxIfma
+                | Feature::AvxNeConvert
+                | Feature::AvxVnniInt8
+                | Feature::AvxVnniInt16
+                | Feature::Avx10
+        ) && !self.leaf7_sub1
+        {
+            return false;
+        }
         match feature {
             Feature::Mmx => self.feature_info.as_ref().is_some_and(FeatureInfo::has_mmx),
             Feature::ThreeDNow => self
@@ -544,5 +672,61 @@ impl CachedFeatureSet {
         self.hi.store((computed.0 >> 64) as u64, Ordering::Relaxed);
         self.filled.store(true, Ordering::Release);
         computed
+    }
+}
+
+#[cfg(test)]
+mod os_state_tests {
+    use super::*;
+
+    fn leaves(xcr0: u64) -> CpuidLeaves {
+        CpuidLeaves {
+            feature_info: None,
+            extended_features: None,
+            extended_processor: None,
+            sha_sm_leaf_eax: 0,
+            leaf7_sub1: false,
+            xcr0,
+        }
+    }
+
+    /// No XCR0 state (OSXSAVE clear, or the OS left AVX off): no VEX/EVEX
+    /// feature passes, legacy-encoded ones do.
+    #[test]
+    fn without_os_state_only_legacy_encodings_pass() {
+        let l = leaves(0);
+        assert!(l.os_enables(Feature::Sse42));
+        assert!(l.os_enables(Feature::Aes));
+        assert!(l.os_enables(Feature::Gfni));
+        for f in [Feature::Avx, Feature::Avx2, Feature::Fma, Feature::F16c, Feature::Sm3] {
+            assert!(!l.os_enables(f), "{f:?}");
+        }
+        assert!(!l.os_enables(Feature::Avx512f));
+        assert!(!l.os_enables(Feature::AmxTile));
+    }
+
+    /// AVX state on, AVX-512 state off (`noxsave`-style kernels, some VMs).
+    #[test]
+    fn avx_state_alone_does_not_enable_avx512() {
+        let l = leaves(XCR0_AVX);
+        assert!(l.os_enables(Feature::Avx2));
+        assert!(l.os_enables(Feature::Vaes));
+        assert_eq!(l.os_enables(Feature::Avx512f), cfg!(target_vendor = "apple"));
+        assert!(leaves(XCR0_AVX512).os_enables(Feature::Avx512bw));
+        assert!(!leaves(XCR0_AVX512).os_enables(Feature::AmxInt8));
+        assert!(leaves(XCR0_AVX512 | XCR0_AMX).os_enables(Feature::AmxInt8));
+    }
+
+    /// Leaf 7.1 bits only count when leaf 7 reports that subleaf.
+    #[test]
+    fn leaf7_sub1_bits_need_the_subleaf() {
+        let mut l = leaves(XCR0_AVX512);
+        l.sha_sm_leaf_eax = 0b111;
+        // `sha_sm_leaf_eax` is only filled when the subleaf exists; with it
+        // filled, the bits read through.
+        assert!(l.cpu_has(Feature::Sm3));
+        l.leaf7_sub1 = false;
+        assert!(!l.cpu_has(Feature::AvxVnni));
+        assert!(!l.cpu_has(Feature::Avx10));
     }
 }

@@ -13,8 +13,8 @@
 //! private helpers. Some things that look missing exist under another name,
 //! for example AVX-512 byte masks as `u64` (`Avx512Bw::movepi8_mask` in
 //! `x86/ops/avx512/kmask/bridge.rs`) and the uncached CPU probe
-//! (`x86::detect_features_fresh`). See the README section "Looking for an
-//! op?" for the full list, including what is genuinely still missing.
+//! (`x86::detect_features_fresh`). See `doc/op-finder.md` in the repository for
+//! the full list.
 //!
 //! ## Which module do I import?
 //!
@@ -92,7 +92,8 @@
 //!
 //! ## Further reading
 //!
-//! Crate README (install, full auto catalog, token layout, Cargo features).
+//! The repository `doc/` folder: detection and caching, the safety model,
+//! kernel macros, cross-architecture differences, and one page per platform.
 
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(

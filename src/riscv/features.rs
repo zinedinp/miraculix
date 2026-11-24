@@ -245,11 +245,6 @@ impl FeatureSet {
         }
     }
 
-    /// This set plus `feature`.
-    pub fn with(self, feature: Feature) -> Self {
-        Self(self.0 | 1 << feature.bit())
-    }
-
     /// Raw bits (one per [`Feature::ALL`] entry). Fits `u32`.
     pub(super) fn bits(self) -> u32 {
         self.0 as u32

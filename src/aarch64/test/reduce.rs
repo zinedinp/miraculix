@@ -1,12 +1,11 @@
 use super::*;
 use crate::aarch64::ops::neon::neon::Neon;
 
-/// `false` = portable path, `true` = Neon (skipped if Neon is somehow absent).
-fn tiers() -> Vec<bool> {
-    if Neon::detect().is_some() {
-        vec![false, true]
-    } else {
-        vec![false]
+/// `None` = portable path, `Some` = Neon (skipped if Neon is somehow absent).
+fn tiers() -> Vec<Option<Neon>> {
+    match Neon::detect() {
+        Some(n) => vec![None, Some(n)],
+        None => vec![None],
     }
 }
 

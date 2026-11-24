@@ -43,11 +43,11 @@ impl Avx512Bw {
         Self::from_features(crate::x86::detect_features())
     }
 
-    /// From resolved tier (`V4` lists `Feature::Avx512bw`); no new CPUID.
+    /// From a tier: `Some` only if `level` lists `Feature::Avx512bw` **and** this
+    /// process really runs at `level` or above ([`crate::x86::detect_level`]),
+    /// so a made-up `GenericLevel` cannot conjure a token. One cached read.
     pub fn from_level(level: GenericLevel) -> Option<Self> {
-        level
-            .required_features()
-            .contains(&Feature::Avx512bw)
+        (level.required_features().contains(&Feature::Avx512bw) && crate::x86::detect_level() >= level)
             .then_some(Avx512Bw(()))
     }
 

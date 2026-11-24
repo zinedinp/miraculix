@@ -1,4 +1,4 @@
-use crate::x86::GenericLevel;
+use crate::x86::bundles::{V3, V4};
 use crate::x86::detect_features;
 use crate::x86::ops::avx::avx::Avx;
 use crate::x86::ops::avx::avx2::Avx2;
@@ -55,7 +55,7 @@ fn avx512f_fn_runs_body_and_returns_its_value() {
 }
 
 crate::avx512_fn! {
-    fn extract_and_double(avx512f: Avx512f, avx: Avx, avx512dq: Avx512Dq, a: [f32; 16]) -> [f32; 8] {
+    fn extract_and_double(avx512dq: Avx512Dq, avx512f: Avx512f, avx: Avx, a: [f32; 16]) -> [f32; 8] {
         let half = avx512dq.extract_f32x8_from_x16::<1>(a);
         let doubled = avx.add_f32x8(half, half);
         // Touches `avx512f` too, proving all 3 tokens are simultaneously
@@ -76,7 +76,7 @@ fn avx512_fn_runs_body_and_returns_its_value() {
     };
     let a: [f32; 16] = core::array::from_fn(|i| i as f32);
     let expect: [f32; 8] = core::array::from_fn(|i| (8 + i) as f32 * 2.0);
-    assert_eq!(extract_and_double(avx512f, avx, avx512dq, a), expect);
+    assert_eq!(extract_and_double(avx512dq, avx512f, avx, a), expect);
 }
 
 crate::f16c_fn! {
@@ -94,7 +94,7 @@ fn f16c_fn_runs_body_and_returns_its_value() {
 }
 
 crate::sse41_f16c_fn! {
-    fn touch_all_four(sse2: Sse2, ssse3: Ssse3, sse41: Sse41, f16c: F16c, a: [i16; 8]) -> [f32; 8] {
+    fn touch_all_four(f16c: F16c, sse2: Sse2, ssse3: Ssse3, sse41: Sse41, a: [i16; 8]) -> [f32; 8] {
         let shuffled = sse2.shufflelo_i16x8::<0x1b>(a);
         let blended = sse41.blend_i16x8::<0xff>(shuffled, a);
         let bytes: [u8; 16] = core::array::from_fn(|i| {
@@ -118,7 +118,7 @@ fn sse41_f16c_fn_runs_body_and_all_four_tokens_are_simultaneously_live() {
     // Just proving it runs without SIGILL under all 4 features at once;
     // the exact shuffle result isn't the point (see `sse2.rs`/`ssse3.rs`/
     // `sse41.rs` for each op's own correctness tests).
-    let _ = touch_all_four(sse2, ssse3, sse41, f16c, a);
+    let _ = touch_all_four(f16c, sse2, ssse3, sse41, a);
 }
 
 crate::avx2_fn! {
@@ -145,8 +145,8 @@ fn avx2_fn_runs_body_and_all_three_tokens_are_simultaneously_live() {
 
 crate::avx512bw_fn! {
     fn extract_add_insert(
-        f: Avx512f,
         bw: Avx512Bw,
+        f: Avx512f,
         avx2: Avx2,
         sse2: Sse2,
         ssse3: Ssse3,
@@ -184,7 +184,7 @@ fn avx512bw_fn_runs_body_and_all_five_tokens_are_simultaneously_live() {
     let a: [u8; 64] = core::array::from_fn(|i| i as u8);
     // Just proving it runs without SIGILL under all 5 features at once;
     // the exact shuffle result isn't the point.
-    let _ = extract_add_insert(f, bw, avx2, sse2, ssse3, a);
+    let _ = extract_add_insert(bw, f, avx2, sse2, ssse3, a);
 }
 
 // Newer catalog rows: smoke tests (early-return if host lacks feature).
@@ -203,7 +203,7 @@ fn ssse3_fn_runs() {
 }
 
 crate::sse41_fn! {
-    fn blend_via_sse41_fn(sse2: Sse2, ssse3: Ssse3, sse41: Sse41, a: [i16; 8], b: [i16; 8]) -> [i16; 8] {
+    fn blend_via_sse41_fn(sse41: Sse41, sse2: Sse2, ssse3: Ssse3, a: [i16; 8], b: [i16; 8]) -> [i16; 8] {
         let _ = ssse3.alignr_u8x16::<0>([0u8; 16], [0u8; 16]);
         let _ = sse2.shufflelo_i16x8::<0>(a);
         sse41.blend_i16x8::<0xff>(a, b)
@@ -217,7 +217,7 @@ fn sse41_fn_runs() {
     let Some(sse41) = Sse41::detect() else { return };
     let a: [i16; 8] = [0; 8];
     let b: [i16; 8] = [1; 8];
-    assert_eq!(blend_via_sse41_fn(sse2, ssse3, sse41, a, b), b);
+    assert_eq!(blend_via_sse41_fn(sse41, sse2, ssse3, a, b), b);
 }
 
 crate::sse42_fn! {
@@ -248,7 +248,7 @@ fn fma_fn_runs() {
 }
 
 crate::avx_fma_fn! {
-    fn avx_then_fma(avx: Avx, fma: Fma, a: [f32; 8], b: [f32; 8], c: [f32; 8]) -> [f32; 8] {
+    fn avx_then_fma(fma: Fma, avx: Avx, a: [f32; 8], b: [f32; 8], c: [f32; 8]) -> [f32; 8] {
         let t = avx.add_f32x8(a, b);
         fma.fmadd_f32x8(t, b, c)
     }
@@ -258,11 +258,12 @@ crate::avx_fma_fn! {
 fn avx_fma_fn_runs() {
     let Some(avx) = Avx::detect() else { return };
     let Some(fma) = Fma::detect() else { return };
-    let _ = avx_then_fma(avx, fma, [1.0; 8], [2.0; 8], [3.0; 8]);
+    let _ = avx_then_fma(fma, avx, [1.0; 8], [2.0; 8], [3.0; 8]);
 }
 
 crate::avx2_fma_fn! {
-    fn avx2_fma_touch(avx2: Avx2, fma: Fma, sse2: Sse2, ssse3: Ssse3, a: [f32; 8]) -> [f32; 8] {
+    fn avx2_fma_touch(p: (Avx2, Fma), sse2: Sse2, ssse3: Ssse3, a: [f32; 8]) -> [f32; 8] {
+        let (avx2, fma) = p;
         let _ = avx2.add_u8x32([0u8; 32], [0u8; 32]);
         let _ = sse2.add_u8x16([0u8; 16], [0u8; 16]);
         let _ = ssse3.alignr_u8x16::<0>([0u8; 16], [0u8; 16]);
@@ -276,7 +277,7 @@ fn avx2_fma_fn_runs() {
     let Some(fma) = Fma::detect() else { return };
     let Some(sse2) = Sse2::detect() else { return };
     let Some(ssse3) = Ssse3::detect() else { return };
-    let _ = avx2_fma_touch(avx2, fma, sse2, ssse3, [1.0; 8]);
+    let _ = avx2_fma_touch((avx2, fma), sse2, ssse3, [1.0; 8]);
 }
 
 crate::aes_fn! {
@@ -306,7 +307,8 @@ fn pclmulqdq_fn_runs() {
 }
 
 crate::aes_pclmul_fn! {
-    fn aes_then_clmul(aes: Aes, pcl: Pclmulqdq, state: [u8; 16], key: [u8; 16]) -> [u64; 2] {
+    fn aes_then_clmul(p: (Aes, Pclmulqdq), state: [u8; 16], key: [u8; 16]) -> [u64; 2] {
+        let (aes, pcl) = p;
         let s = aes.aesenc(state, key);
         let a = [
             u64::from_le_bytes(s[0..8].try_into().unwrap()),
@@ -322,7 +324,7 @@ fn aes_pclmul_fn_runs() {
     let Some(pcl) = Pclmulqdq::detect() else {
         return;
     };
-    let _ = aes_then_clmul(aes, pcl, [0u8; 16], [1u8; 16]);
+    let _ = aes_then_clmul((aes, pcl), [0u8; 16], [1u8; 16]);
 }
 
 crate::sha_fn! {
@@ -380,9 +382,9 @@ fn avx512vnni_fn_runs() {
 
 crate::avx512vbmi_fn! {
     fn permute_via_vbmi_fn(
+        v: Avx512Vbmi,
         f: Avx512f,
         bw: Avx512Bw,
-        v: Avx512Vbmi,
         idx: [u8; 64],
         a: [u8; 64],
     ) -> [u8; 64] {
@@ -403,7 +405,7 @@ fn avx512vbmi_fn_runs() {
     };
     let a: [u8; 64] = core::array::from_fn(|i| i as u8);
     let idx: [u8; 64] = core::array::from_fn(|i| (63 - i) as u8);
-    let out = permute_via_vbmi_fn(f, bw, v, idx, a);
+    let out = permute_via_vbmi_fn(v, f, bw, idx, a);
     assert_eq!(out, idx);
 }
 
@@ -436,40 +438,30 @@ fn avx512bf16_fn_runs() {
 }
 
 crate::avx_v3_fn! {
-    fn v3_add_fmadd(avx: Avx, fma: Fma, a: [f32; 8], b: [f32; 8], c: [f32; 8]) -> [f32; 8] {
-        let t = avx.add_f32x8(a, b);
-        fma.fmadd_f32x8(t, b, c)
+    fn v3_add_fmadd(v: V3, a: [f32; 8], b: [f32; 8], c: [f32; 8]) -> [f32; 8] {
+        let t = v.avx.add_f32x8(a, b);
+        v.fma.fmadd_f32x8(t, b, c)
     }
 }
 
 #[test]
 fn avx_v3_fn_runs() {
-    let Some(avx) = Avx::detect() else { return };
-    let Some(fma) = Fma::detect() else { return };
-    // Also need the rest of V3 on host for the enable string; skip if not.
-    let set = detect_features();
-    if !set.contains_all(GenericLevel::V3.required_features()) {
-        return;
-    }
-    let _ = v3_add_fmadd(avx, fma, [1.0; 8], [2.0; 8], [3.0; 8]);
+    let Some(v) = V3::detect() else { return };
+    let _ = v3_add_fmadd(v, [1.0; 8], [2.0; 8], [3.0; 8]);
 }
 
 crate::avx512_v4_fn! {
-    fn v4_double(f: Avx512f, a: [f32; 16]) -> [f32; 16] {
-        f.add_f32x16(a, a)
+    fn v4_double(v: V4, a: [f32; 16]) -> [f32; 16] {
+        v.avx512f.add_f32x16(a, a)
     }
 }
 
 #[test]
 fn avx512_v4_fn_runs() {
-    let Some(f) = Avx512f::detect() else { return };
-    let set = detect_features();
-    if !set.contains_all(GenericLevel::V4.required_features()) {
-        return;
-    }
+    let Some(v) = V4::detect() else { return };
     let a: [f32; 16] = core::array::from_fn(|i| i as f32);
     let expect: [f32; 16] = core::array::from_fn(|i| i as f32 * 2.0);
-    assert_eq!(v4_double(f, a), expect);
+    assert_eq!(v4_double(v, a), expect);
 }
 
 // Generic parameters on `*_fn!` kernels.

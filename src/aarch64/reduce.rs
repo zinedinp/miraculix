@@ -22,8 +22,8 @@ use core::arch::aarch64::*;
 use super::ops::neon::neon::Neon;
 use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P, exp_scalar};
 
-fn hw() -> bool {
-    Neon::detect().is_some()
+fn hw() -> Option<Neon> {
+    Neon::detect()
 }
 
 // ---------------------------------------------------------------- bf16 -> f32
@@ -36,12 +36,13 @@ pub fn bf16_to_f32(a: &[u16], out: &mut [f32]) {
     bf16_to_f32_with(hw(), a, out)
 }
 
-#[doc(hidden)]
-pub fn bf16_to_f32_with(neon: bool, a: &[u16], out: &mut [f32]) {
+/// [`bf16_to_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn bf16_to_f32_with(neon: Option<Neon>, a: &[u16], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
-    // SAFETY (all `unsafe` here): `neon` is true only when Neon was detected;
+    // SAFETY (all `unsafe` here): `neon` is `Some` only with a `Neon` token, which only detection hands out;
     // pointers stay inside the slices.
-    let done = if neon {
+    let done = if neon.is_some() {
         unsafe { bf16_neon(a, out) }
     } else {
         0
@@ -78,10 +79,11 @@ pub fn reduce_sum_f32(a: &[f32]) -> f32 {
     reduce_sum_f32_with(hw(), a)
 }
 
-#[doc(hidden)]
-pub fn reduce_sum_f32_with(neon: bool, a: &[f32]) -> f32 {
+/// [`reduce_sum_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn reduce_sum_f32_with(neon: Option<Neon>, a: &[f32]) -> f32 {
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut s, done) = if neon {
+    let (mut s, done) = if neon.is_some() {
         unsafe { sum_neon(a) }
     } else {
         (0.0, 0)
@@ -150,10 +152,11 @@ pub fn reduce_min_f32(a: &[f32]) -> f32 {
     reduce_min_f32_with(hw(), a)
 }
 
-#[doc(hidden)]
-pub fn reduce_max_f32_with(neon: bool, a: &[f32]) -> f32 {
+/// [`reduce_max_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn reduce_max_f32_with(neon: Option<Neon>, a: &[f32]) -> f32 {
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut m, done) = if neon {
+    let (mut m, done) = if neon.is_some() {
         unsafe { max_neon(a) }
     } else {
         (f32::NEG_INFINITY, 0)
@@ -166,10 +169,11 @@ pub fn reduce_max_f32_with(neon: bool, a: &[f32]) -> f32 {
     m
 }
 
-#[doc(hidden)]
-pub fn reduce_min_f32_with(neon: bool, a: &[f32]) -> f32 {
+/// [`reduce_min_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn reduce_min_f32_with(neon: Option<Neon>, a: &[f32]) -> f32 {
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut m, done) = if neon {
+    let (mut m, done) = if neon.is_some() {
         unsafe { min_neon(a) }
     } else {
         (f32::INFINITY, 0)
@@ -190,11 +194,12 @@ pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
     argmax_f32_with(hw(), a)
 }
 
-#[doc(hidden)]
-pub fn argmax_f32_with(neon: bool, a: &[f32]) -> Option<(usize, f32)> {
+/// [`argmax_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn argmax_f32_with(neon: Option<Neon>, a: &[f32]) -> Option<(usize, f32)> {
     let m = reduce_max_f32_with(neon, a);
     // SAFETY: see `bf16_to_f32_with`.
-    let start = match if neon {
+    let start = match if neon.is_some() {
         unsafe { find_neon(a, m) }
     } else {
         Ok(0)
@@ -239,11 +244,12 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
     exp_f32_with(hw(), a, out)
 }
 
-#[doc(hidden)]
-pub fn exp_f32_with(neon: bool, a: &[f32], out: &mut [f32]) {
+/// [`exp_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn exp_f32_with(neon: Option<Neon>, a: &[f32], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
     // SAFETY: see `bf16_to_f32_with`.
-    let done = if neon { unsafe { exp_neon(a, out) } } else { 0 };
+    let done = if neon.is_some() { unsafe { exp_neon(a, out) } } else { 0 };
     for i in done..a.len() {
         out[i] = exp_scalar(a[i]);
     }
@@ -297,11 +303,12 @@ pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
     affine_u16_f32_with(hw(), q, a, b, out)
 }
 
-#[doc(hidden)]
-pub fn affine_u16_f32_with(neon: bool, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+/// [`affine_u16_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn affine_u16_f32_with(neon: Option<Neon>, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
     assert_eq!(q.len(), out.len());
     // SAFETY: see `bf16_to_f32_with`.
-    let done = if neon {
+    let done = if neon.is_some() {
         unsafe { affine_neon(q, a, b, out) }
     } else {
         0
@@ -337,11 +344,12 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     dot_f32_with(hw(), a, b)
 }
 
-#[doc(hidden)]
-pub fn dot_f32_with(neon: bool, a: &[f32], b: &[f32]) -> f32 {
+/// [`dot_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn dot_f32_with(neon: Option<Neon>, a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
     // SAFETY: see `bf16_to_f32_with`.
-    let (mut s, done) = if neon {
+    let (mut s, done) = if neon.is_some() {
         unsafe { dot_neon(a, b) }
     } else {
         (0.0, 0)
@@ -366,11 +374,12 @@ pub fn sliding_dot_f32(signal: &[f32], taps: &[f32], out: &mut [f32]) {
     sliding_dot_f32_with(hw(), signal, taps, out)
 }
 
-#[doc(hidden)]
-pub fn sliding_dot_f32_with(neon: bool, signal: &[f32], taps: &[f32], out: &mut [f32]) {
+/// [`sliding_dot_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn sliding_dot_f32_with(neon: Option<Neon>, signal: &[f32], taps: &[f32], out: &mut [f32]) {
     crate::reduce_common::sliding_check(signal, taps, out);
     // SAFETY: see `bf16_to_f32_with`; `sliding_check` keeps every window in bounds.
-    let done = if neon {
+    let done = if neon.is_some() {
         unsafe { sliding_neon(signal, taps, out) }
     } else {
         0
@@ -418,12 +427,13 @@ pub fn lerp_u8(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
     lerp_u8_with(hw(), a, b, num, den, out)
 }
 
-#[doc(hidden)]
-pub fn lerp_u8_with(neon: bool, a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
+/// [`lerp_u8`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn lerp_u8_with(neon: Option<Neon>, a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]) {
     crate::reduce_common::lerp_check(a, b, num, den, out);
     let w = crate::reduce_common::lerp_operands(num, den);
     // SAFETY: see `bf16_to_f32_with`; `lerp_check` makes the three lengths equal.
-    let done = if neon {
+    let done = if neon.is_some() {
         unsafe { lerp_neon(a, b, w, out) }
     } else {
         0
@@ -502,8 +512,9 @@ pub fn logsumexp_f32(a: &[f32]) -> f32 {
     logsumexp_f32_with(hw(), a)
 }
 
-#[doc(hidden)]
-pub fn logsumexp_f32_with(neon: bool, a: &[f32]) -> f32 {
+/// [`logsumexp_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn logsumexp_f32_with(neon: Option<Neon>, a: &[f32]) -> f32 {
     crate::reduce_common::logsumexp_with(
         a,
         |x| reduce_max_f32_with(neon, x),
@@ -539,16 +550,17 @@ pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR
     gemm_f32_kernel_with(hw(), kc, a, b, acc)
 }
 
-#[doc(hidden)]
+/// [`gemm_f32_kernel`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
 pub fn gemm_f32_kernel_with(
-    neon: bool,
+    neon: Option<Neon>,
     kc: usize,
     a: &[f32],
     b: &[f32],
     acc: &mut [[f32; GEMM_NR]; GEMM_MR],
 ) {
     crate::reduce_common::gemm_check(kc, a, b);
-    if neon {
+    if neon.is_some() {
         // SAFETY: Neon detected; lengths checked above.
         unsafe { gemm_kernel_neon(kc, a.as_ptr(), b.as_ptr(), acc) }
     } else {
@@ -601,11 +613,12 @@ pub fn compress_gt_f32(a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
     compress_gt_f32_with(hw(), a, threshold, out)
 }
 
-#[doc(hidden)]
-pub fn compress_gt_f32_with(neon: bool, a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
+/// [`compress_gt_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn compress_gt_f32_with(neon: Option<Neon>, a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
     assert!(out.len() >= a.len(), "out must hold a.len() indices");
     // SAFETY: see `bf16_to_f32_with`; writes stay below `a.len() <= out.len()`.
-    let (mut n, done) = if neon {
+    let (mut n, done) = if neon.is_some() {
         unsafe { compress_neon(a, threshold, out) }
     } else {
         (0, 0)
@@ -660,8 +673,9 @@ pub fn topk_f32(a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
     topk_f32_with(hw(), a, idx, val)
 }
 
-#[doc(hidden)]
-pub fn topk_f32_with(neon: bool, a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
+/// [`topk_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
+/// the portable path).
+pub fn topk_f32_with(neon: Option<Neon>, a: &[f32], idx: &mut [u32], val: &mut [f32]) -> usize {
     crate::reduce_common::topk_with(a, idx, val, |c, t, b| compress_gt_f32_with(neon, c, t, b))
 }
 

@@ -169,3 +169,59 @@ fn x86_64_only_intrinsics_have_32bit_stand_ins() {
         }
     }
 }
+
+/// Detection must agree with std's, which checks OS support (`XGETBV`)
+/// as well as the CPUID bit. A CPUID-only probe would claim AVX on a VM
+/// or kernel that has the register state switched off.
+#[test]
+fn runtime_probe_agrees_with_std_detection() {
+    let set = FeatureSet::detect();
+    let pairs = [
+        (Feature::Sse41, std::is_x86_feature_detected!("sse4.1")),
+        (Feature::Sse42, std::is_x86_feature_detected!("sse4.2")),
+        (Feature::Avx, std::is_x86_feature_detected!("avx")),
+        (Feature::Avx2, std::is_x86_feature_detected!("avx2")),
+        (Feature::Fma, std::is_x86_feature_detected!("fma")),
+        (Feature::F16c, std::is_x86_feature_detected!("f16c")),
+        (Feature::Avx512f, std::is_x86_feature_detected!("avx512f")),
+        (Feature::Avx512bw, std::is_x86_feature_detected!("avx512bw")),
+        (Feature::Avx512vl, std::is_x86_feature_detected!("avx512vl")),
+        (Feature::Vaes, std::is_x86_feature_detected!("vaes")),
+        (Feature::Gfni, std::is_x86_feature_detected!("gfni")),
+    ];
+    for (feature, std_says) in pairs {
+        assert_eq!(set.contains(feature), std_says, "{feature:?}");
+    }
+}
+
+/// `from_level` must not hand out a token for a level the host does not
+/// run at, whatever `GenericLevel` the caller makes up.
+#[test]
+fn from_level_rejects_a_level_above_the_host() {
+    use super::ops::avx::avx2::Avx2;
+    use super::ops::avx512::avx512f::Avx512f;
+    let host = detect_level();
+    for &level in GenericLevel::ALL {
+        if level > host {
+            assert!(Avx2::from_level(level).is_none(), "{level:?} > {host:?}");
+            assert!(Avx512f::from_level(level).is_none(), "{level:?} > {host:?}");
+        }
+    }
+    assert_eq!(Avx2::from_level(host).is_some(), host >= GenericLevel::V3);
+}
+
+/// `reduce::available_tiers` only lists tiers the CPU has, and the `*_with`
+/// functions agree with the auto-dispatching ones on every one of them.
+#[test]
+fn every_available_reduce_tier_runs() {
+    let a: Vec<f32> = (0..1000).map(|i| (i % 17) as f32 - 8.0).collect();
+    let want = super::reduce::dot_f32(&a, &a);
+    for tier in super::reduce::available_tiers().into_iter().flatten() {
+        let got = super::reduce::dot_f32_with(tier, &a, &a);
+        assert!((got - want).abs() <= 1e-3 * want.abs(), "{tier:?}: {got} vs {want}");
+    }
+    assert_eq!(
+        super::reduce::available_tiers().into_iter().flatten().last(),
+        Some(super::reduce::best_tier())
+    );
+}
