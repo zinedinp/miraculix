@@ -5,71 +5,69 @@
 //!
 //! | Op group | Order |
 //! |---|---|
-//! | `dot_f32`, `reduce_sum_f32` | `Vmx128` > `Vmx` > `PairedSingle` > portable |
-//! | element-wise f32, `affine_u16_f32` | `Vmx` > `PairedSingle` > portable |
-//! | `add_i32`, max/min/argmax, `bf16_to_f32` | `Vmx` > portable |
+//! | element-wise f32/i32 | `Isa300` > `Vsx` > `Vmx` > `PairedSingle` (f32) > portable |
+//! | `dot_f32`, `reduce_sum_f32` | `Isa300` > `Vsx` > `Vmx128` > `Vmx` > `PairedSingle` > portable |
+//! | max/min/argmax, `bf16_to_f32` | `Vsx` > `Vmx` > portable |
+//! | `affine_u16_f32` | `Vsx` > `Vmx` > `PairedSingle` > portable |
+//! | `gemm_f32_kernel` | `Mma` > portable |
 //! | everything else | portable (`reduce_common`) |
 //!
-//! `Vmx` is built for big-endian targets (consoles, G4/G5); little-endian
-//! POWER (ppc64le, always VSX) runs the portable code until the VSX kernels
-//! land. NaN is ignored by max/min/argmax/top-k/compress, ties pick the lowest
-//! index, and mismatched lengths panic. Sums and dot products add in a
-//! kernel-specific order, so the last bits can differ between kernels.
+//! `Vmx` is built for big-endian targets (consoles, G4/G5); POWER7+ in either
+//! endianness takes the VSX kernels. NaN is ignored by max/min/argmax/top-k/
+//! compress, ties pick the lowest index, and mismatched lengths panic. Sums and
+//! dot products add in a kernel-specific order, so the last bits can differ
+//! between kernels.
 
 #[allow(unused_imports, reason = "unused on targets without any kernel")]
 use super::{FeatureSet, detect_features};
 
-#[cfg(target_arch = "powerpc")]
-use super::ops::paired::PairedSingle;
-#[cfg(target_endian = "big")]
-use super::ops::vmx::Vmx;
-#[cfg(all(target_arch = "powerpc64", target_endian = "big"))]
-use super::ops::vmx128::Vmx128;
-
-/// The `Vmx` rung for `features`, or `None` where it is not built.
-#[inline]
-#[allow(unused_variables)]
-fn vmx(features: FeatureSet) -> Option<VmxRung> {
-    #[cfg(target_endian = "big")]
-    return Vmx::from_features(features);
-    #[cfg(not(target_endian = "big"))]
-    return None;
+/// Declares one rung: the token type where the `cfg` holds, an uninhabited
+/// stand-in elsewhere, and `fn $f(features) -> Option<token>`.
+macro_rules! rung {
+    ($f:ident, $alias:ident, $path:path, $($cfg:tt)*) => {
+        #[cfg($($cfg)*)]
+        type $alias = $path;
+        #[cfg(not($($cfg)*))]
+        type $alias = Never;
+        #[inline]
+        #[allow(unused_variables)]
+        fn $f(features: FeatureSet) -> Option<$alias> {
+            <$alias>::from_features(features)
+        }
+    };
 }
 
-/// The paired-single rung for `features`, or `None` where it is not built.
-#[inline]
-#[allow(unused_variables)]
-fn paired(features: FeatureSet) -> Option<PairedRung> {
-    #[cfg(target_arch = "powerpc")]
-    return PairedSingle::from_features(features);
-    #[cfg(not(target_arch = "powerpc"))]
-    return None;
-}
-
-/// The VMX128 rung for `features`, or `None` where it is not built.
-#[inline]
-#[allow(unused_variables)]
-fn vmx128(features: FeatureSet) -> Option<Vmx128Rung> {
-    #[cfg(all(target_arch = "powerpc64", target_endian = "big"))]
-    return Vmx128::from_features(features);
-    #[cfg(not(all(target_arch = "powerpc64", target_endian = "big")))]
-    return None;
-}
-
-// Stand-ins so the dispatch reads the same on every target; never constructed
-// where the real token is missing.
-#[cfg(target_endian = "big")]
-type VmxRung = Vmx;
-#[cfg(not(target_endian = "big"))]
-type VmxRung = Never;
-#[cfg(target_arch = "powerpc")]
-type PairedRung = PairedSingle;
-#[cfg(not(target_arch = "powerpc"))]
-type PairedRung = Never;
-#[cfg(all(target_arch = "powerpc64", target_endian = "big"))]
-type Vmx128Rung = Vmx128;
-#[cfg(not(all(target_arch = "powerpc64", target_endian = "big")))]
-type Vmx128Rung = Never;
+rung!(
+    vsx,
+    VsxRung,
+    super::ops::vsx::Vsx,
+    any(target_arch = "powerpc", target_arch = "powerpc64")
+);
+rung!(
+    isa300,
+    Isa300Rung,
+    super::ops::isa300::Isa300,
+    target_arch = "powerpc64"
+);
+rung!(
+    mma,
+    MmaRung,
+    super::ops::mma::Mma,
+    target_arch = "powerpc64"
+);
+rung!(vmx, VmxRung, super::ops::vmx::Vmx, target_endian = "big");
+rung!(
+    paired,
+    PairedRung,
+    super::ops::paired::PairedSingle,
+    target_arch = "powerpc"
+);
+rung!(
+    vmx128,
+    Vmx128Rung,
+    super::ops::vmx128::Vmx128,
+    all(target_arch = "powerpc64", target_endian = "big")
+);
 
 /// Uninhabited token for kernels a target does not build.
 #[allow(dead_code)]
@@ -78,6 +76,9 @@ enum Never {}
 
 #[allow(dead_code, unused_variables)]
 impl Never {
+    fn from_features(features: FeatureSet) -> Option<Self> {
+        None
+    }
     fn add_f32(self, a: &[f32], b: &[f32], out: &mut [f32]) {
         match self {}
     }
@@ -114,6 +115,9 @@ impl Never {
     fn affine_u16_f32(self, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
         match self {}
     }
+    fn gemm_f32_kernel(self, kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+        match self {}
+    }
 }
 
 /// `out[i] = a[i] + b[i]`.
@@ -122,6 +126,12 @@ impl Never {
 /// If the lengths differ.
 pub fn add_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
     let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.add_f32(a, b, out);
+    }
+    if let Some(t) = vsx(f) {
+        return t.add_f32(a, b, out);
+    }
     if let Some(t) = vmx(f) {
         return t.add_f32(a, b, out);
     }
@@ -140,6 +150,12 @@ pub fn add_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// If the lengths differ.
 pub fn sub_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
     let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.sub_f32(a, b, out);
+    }
+    if let Some(t) = vsx(f) {
+        return t.sub_f32(a, b, out);
+    }
     if let Some(t) = vmx(f) {
         return t.sub_f32(a, b, out);
     }
@@ -158,6 +174,12 @@ pub fn sub_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// If the lengths differ.
 pub fn mul_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
     let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.mul_f32(a, b, out);
+    }
+    if let Some(t) = vsx(f) {
+        return t.mul_f32(a, b, out);
+    }
     if let Some(t) = vmx(f) {
         return t.mul_f32(a, b, out);
     }
@@ -177,6 +199,12 @@ pub fn mul_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// If the lengths differ.
 pub fn fmadd_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.fmadd_f32(a, b, c, out);
+    }
+    if let Some(t) = vsx(f) {
+        return t.fmadd_f32(a, b, c, out);
+    }
     if let Some(t) = vmx(f) {
         return t.fmadd_f32(a, b, c, out);
     }
@@ -194,7 +222,14 @@ pub fn fmadd_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
 /// # Panics
 /// If the lengths differ.
 pub fn add_i32(a: &[i32], b: &[i32], out: &mut [i32]) {
-    if let Some(t) = vmx(detect_features()) {
+    let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.add_i32(a, b, out);
+    }
+    if let Some(t) = vsx(f) {
+        return t.add_i32(a, b, out);
+    }
+    if let Some(t) = vmx(f) {
         return t.add_i32(a, b, out);
     }
     assert!(a.len() == b.len() && b.len() == out.len());
@@ -206,6 +241,12 @@ pub fn add_i32(a: &[i32], b: &[i32], out: &mut [i32]) {
 /// Sum of all elements (order is implementation-defined). NaN propagates.
 pub fn reduce_sum_f32(a: &[f32]) -> f32 {
     let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.reduce_sum_f32(a);
+    }
+    if let Some(t) = vsx(f) {
+        return t.reduce_sum_f32(a);
+    }
     if let Some(t) = vmx128(f) {
         return t.reduce_sum_f32(a);
     }
@@ -220,7 +261,11 @@ pub fn reduce_sum_f32(a: &[f32]) -> f32 {
 
 /// Largest element, NaN ignored; `-inf` if there is none.
 pub fn reduce_max_f32(a: &[f32]) -> f32 {
-    if let Some(t) = vmx(detect_features()) {
+    let f = detect_features();
+    if let Some(t) = vsx(f) {
+        return t.reduce_max_f32(a);
+    }
+    if let Some(t) = vmx(f) {
         return t.reduce_max_f32(a);
     }
     a.iter()
@@ -229,7 +274,11 @@ pub fn reduce_max_f32(a: &[f32]) -> f32 {
 
 /// Smallest element, NaN ignored; `+inf` if there is none.
 pub fn reduce_min_f32(a: &[f32]) -> f32 {
-    if let Some(t) = vmx(detect_features()) {
+    let f = detect_features();
+    if let Some(t) = vsx(f) {
+        return t.reduce_min_f32(a);
+    }
+    if let Some(t) = vmx(f) {
         return t.reduce_min_f32(a);
     }
     a.iter()
@@ -239,7 +288,11 @@ pub fn reduce_min_f32(a: &[f32]) -> f32 {
 /// First index of the largest element and its value, NaN ignored.
 /// `None` if the slice is empty or all NaN.
 pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
-    if let Some(t) = vmx(detect_features()) {
+    let f = detect_features();
+    if let Some(t) = vsx(f) {
+        return t.argmax_f32(a);
+    }
+    if let Some(t) = vmx(f) {
         return t.argmax_f32(a);
     }
     let mut best: Option<(usize, f32)> = None;
@@ -295,7 +348,11 @@ pub fn dot_i8_i32(a: &[i8], b: &[i8]) -> i32 {
 /// # Panics
 /// If the lengths differ.
 pub fn bf16_to_f32(a: &[u16], out: &mut [f32]) {
-    if let Some(t) = vmx(detect_features()) {
+    let f = detect_features();
+    if let Some(t) = vsx(f) {
+        return t.bf16_to_f32(a, out);
+    }
+    if let Some(t) = vmx(f) {
         return t.bf16_to_f32(a, out);
     }
     assert_eq!(a.len(), out.len());
@@ -319,6 +376,9 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
 /// If the lengths differ.
 pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
     let f = detect_features();
+    if let Some(t) = vsx(f) {
+        return t.affine_u16_f32(q, a, b, out);
+    }
     if let Some(t) = vmx(f) {
         return t.affine_u16_f32(q, a, b, out);
     }
@@ -337,6 +397,12 @@ pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
 /// If the lengths differ.
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     let f = detect_features();
+    if let Some(t) = isa300(f) {
+        return t.dot_f32(a, b);
+    }
+    if let Some(t) = vsx(f) {
+        return t.dot_f32(a, b);
+    }
     if let Some(t) = vmx128(f) {
         return t.dot_f32(a, b);
     }
@@ -394,11 +460,15 @@ pub use crate::reduce_common::{GEMM_MR, GEMM_NR};
 
 /// GEMM micro-kernel, same contract as `x86::reduce::gemm_f32_kernel`
 /// (`acc[i][j] += sum_k a[k*MR + i] * b[k*NR + j]`, k ascending). Portable code
-/// (product and sum rounded separately); the MMA kernel is planned for POWER10.
+/// (product and sum rounded separately) everywhere except POWER10/11, where
+/// the MMA accumulators run it with one rounding per step.
 ///
 /// # Panics
 /// If `a.len() < kc * GEMM_MR` or `b.len() < kc * GEMM_NR`.
 pub fn gemm_f32_kernel(kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
+    if let Some(t) = mma(detect_features()) {
+        return t.gemm_f32_kernel(kc, a, b, acc);
+    }
     crate::reduce_common::gemm_check(kc, a, b);
     crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc)
 }

@@ -142,11 +142,21 @@ fn wc_store_fence() {
     unsafe {
         core::arch::asm!("fence ow, ow", options(nostack, preserves_flags))
     };
+    #[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
+    // SAFETY: a barrier, no memory access of its own. `sync`, not `eieio`:
+    // `eieio` orders stores only among cache-inhibited storage and is not
+    // cumulative, so it misses data that went through normal memory; Linux's
+    // `wmb()` is `sync` on PowerPC for the same reason.
+    unsafe {
+        core::arch::asm!("sync", options(nostack, preserves_flags))
+    };
     #[cfg(not(any(
         target_arch = "x86_64",
         target_arch = "aarch64",
         target_arch = "riscv32",
-        target_arch = "riscv64"
+        target_arch = "riscv64",
+        target_arch = "powerpc",
+        target_arch = "powerpc64"
     )))]
     core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
 }

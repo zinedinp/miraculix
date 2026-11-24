@@ -175,6 +175,63 @@ impl BareMetal {
     }
 }
 
+/// Number of CPUs in a Linux CPU list such as `0-7`, `0,8,16,24` or
+/// `0-3,64-67` (the `thread_siblings_list` format). `None` if malformed.
+#[cfg_attr(
+    not(any(target_os = "linux", target_os = "android")),
+    allow(dead_code, reason = "read from sysfs / auxv on Linux only")
+)]
+pub(crate) fn cpu_list_len(list: &[u8]) -> Option<u32> {
+    let text = core::str::from_utf8(list).ok()?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let mut n = 0u32;
+    for part in text.split(',') {
+        let mut ends = part.split('-');
+        let lo: u32 = ends.next()?.trim().parse().ok()?;
+        let hi: u32 = match ends.next() {
+            Some(h) => h.trim().parse().ok()?,
+            None => lo,
+        };
+        if ends.next().is_some() || hi < lo {
+            return None;
+        }
+        n = n.checked_add(hi - lo + 1)?;
+    }
+    Some(n)
+}
+
+/// One cache level as the PowerPC auxv reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheGeometry {
+    /// Total size in bytes.
+    pub size: u32,
+    /// Line size in bytes.
+    pub line: u32,
+    /// Associativity (ways); 0 if unknown, `0xffff` for fully associative.
+    pub ways: u32,
+}
+
+impl CacheGeometry {
+    /// From `AT_*_CACHESIZE` and `AT_*_CACHEGEOMETRY` (line size in bits 0..16,
+    /// associativity in bits 16..32). `None` when the kernel reports nothing.
+    #[cfg_attr(
+        not(any(target_os = "linux", target_os = "android")),
+        allow(dead_code, reason = "read from auxv on Linux only")
+    )]
+    pub(crate) const fn from_auxv(size: u64, geometry: u64) -> Option<Self> {
+        if size == 0 && geometry == 0 {
+            return None;
+        }
+        Some(CacheGeometry {
+            size: size as u32,
+            line: (geometry & 0xffff) as u32,
+            ways: ((geometry >> 16) & 0xffff) as u32,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +304,37 @@ mod tests {
             BareMetal::from_regs(0x0063_0000, on, 0),
             BareMetal::default()
         );
+    }
+
+    #[test]
+    fn cpu_lists() {
+        assert_eq!(
+            cpu_list_len(
+                b"0-7
+"
+            ),
+            Some(8)
+        );
+        assert_eq!(cpu_list_len(b"0,8,16,24"), Some(4));
+        assert_eq!(cpu_list_len(b"0-3,64-67"), Some(8));
+        assert_eq!(cpu_list_len(b"5"), Some(1));
+        assert_eq!(cpu_list_len(b""), None);
+        assert_eq!(cpu_list_len(b"3-1"), None);
+        assert_eq!(cpu_list_len(b"0-1-2"), None);
+        assert_eq!(cpu_list_len(b"x"), None);
+    }
+
+    #[test]
+    fn cache_geometry_decodes() {
+        // POWER9 L1d: 32 KiB, 128-byte lines, 8 ways.
+        assert_eq!(
+            CacheGeometry::from_auxv(32768, 8 << 16 | 128),
+            Some(CacheGeometry {
+                size: 32768,
+                line: 128,
+                ways: 8
+            })
+        );
+        assert_eq!(CacheGeometry::from_auxv(0, 0), None);
     }
 }

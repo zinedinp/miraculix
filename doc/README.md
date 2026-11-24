@@ -25,7 +25,7 @@ example. These pages go deeper on one topic each.
 | [AArch32](platforms/aarch32.md) | ARMv7 Neon (nightly) |
 | [RISC-V](platforms/riscv.md) | RVV, Zvfh, Zvfbf*, accelerator detection |
 | [WebAssembly](platforms/wasm.md) | simd128 / relaxed-simd, host-enabled SIMD, module validation |
-| [PowerPC](platforms/powerpc.md) | GameCube/Wii/Wii U paired singles, PS3 Cell, Xbox 360 VMX128, G4/G5 AltiVec, OpenPOWER/POWER detection |
+| [PowerPC](platforms/powerpc.md) | GameCube/Wii/Wii U paired singles, PS3 Cell, Xbox 360 VMX128, G4/G5 AltiVec, POWER7-11 VSX / ISA 3.0 / MMA, SMT topology |
 | [LoongArch](platforms/loongarch.md) | detection |
 
 Per-extension minimum Rust versions: [RUST_VERSIONS.md](../RUST_VERSIONS.md).

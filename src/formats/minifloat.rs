@@ -324,9 +324,9 @@ impl MiniFloat {
 
     /// Decodes 16-bit codes ([`F16`](Self::F16) / [`Bf16`](Self::Bf16)).
     ///
-    /// FP16 uses F16C on x86, `fcvtl` on AArch64 and `Zvfh` on RISC-V when
-    /// present; BF16 is a shift (`Zvfbfmin` on RISC-V). Both fall back to the
-    /// scalar codec.
+    /// FP16 uses F16C on x86, `fcvtl` on AArch64, `Zvfh` on RISC-V and
+    /// `xvcvhpsp` on POWER9+ when present; BF16 is a shift (`Zvfbfmin` on
+    /// RISC-V, VSX/VMX on PowerPC). Both fall back to the scalar codec.
     ///
     /// # Panics
     /// If `bits() != 16` or the slices differ in length.
@@ -347,6 +347,11 @@ impl MiniFloat {
             #[cfg(target_arch = "aarch64")]
             {
                 crate::aarch64::reduce::bf16_to_f32(src, dst);
+                return;
+            }
+            #[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
+            {
+                crate::powerpc::auto::bf16_to_f32(src, dst);
                 return;
             }
             #[allow(unreachable_code)]
@@ -370,6 +375,11 @@ impl MiniFloat {
             t.cvt_f16_to_f32_slice(src, dst);
             return;
         }
+        #[cfg(target_arch = "powerpc64")]
+        if let Some(t) = crate::powerpc::ops::isa300::Isa300::detect() {
+            t.cvt_f16_to_f32_slice(src, dst);
+            return;
+        }
         dst.iter_mut()
             .zip(src)
             .for_each(|(d, &s)| *d = self.decode(s as u32));
@@ -377,7 +387,7 @@ impl MiniFloat {
 
     /// Encodes to 16-bit codes ([`F16`](Self::F16) / [`Bf16`](Self::Bf16)).
     ///
-    /// FP16 with [`Overflow::Special`] uses F16C / `fcvtn` when present;
+    /// FP16 with [`Overflow::Special`] uses F16C / `fcvtn` / `xvcvsphp` when present;
     /// NaN payloads may then differ from the scalar codec. BF16 uses an
     /// integer round-to-nearest-even that the compiler vectorizes (the
     /// AVX512-BF16 convert is not used: it flushes subnormals).
@@ -413,6 +423,11 @@ impl MiniFloat {
             }
             #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
             if let Some(t) = crate::riscv::ops::zvfh::Zvfh::detect() {
+                t.cvt_f32_to_f16_slice(src, dst);
+                return;
+            }
+            #[cfg(target_arch = "powerpc64")]
+            if let Some(t) = crate::powerpc::ops::isa300::Isa300::detect() {
                 t.cvt_f32_to_f16_slice(src, dst);
                 return;
             }

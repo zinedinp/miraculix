@@ -2,6 +2,9 @@
 //!
 //! | Module | Token | Cores | Needs |
 //! |---|---|---|---|
+//! | `vsx` | `Vsx` | POWER7+ (ISA 2.06), OpenPOWER cores with VSX | VSX; both endians |
+//! | `isa300` | `Isa300` | POWER9+ (ISA 3.0): `lxvl` tails, FP16 | `powerpc64` |
+//! | `mma` | `Mma` | POWER10/11 (ISA 3.1): GEMM on the MMA accumulators | `powerpc64` |
 //! | `vmx` | `Vmx` | G4, G5, Cell PPE (PS3), Xenon (Xbox 360) | AltiVec; big-endian targets |
 //! | `paired` | `PairedSingle` | Gekko, Broadway, Espresso (GameCube, Wii, Wii U) | 32-bit `powerpc`, bare metal |
 //! | `vmx128` | `Vmx128` | Xenon (Xbox 360) | big-endian `powerpc64`, bare metal |
@@ -35,6 +38,14 @@ macro_rules! asm_mixed {
 
 #[cfg(any(test, target_arch = "powerpc", target_arch = "powerpc64"))]
 pub(crate) mod encode;
+
+pub mod vsx;
+
+#[cfg(target_arch = "powerpc64")]
+pub mod isa300;
+
+#[cfg(target_arch = "powerpc64")]
+pub mod mma;
 
 #[cfg(target_endian = "big")]
 pub mod vmx;

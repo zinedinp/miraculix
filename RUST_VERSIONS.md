@@ -101,7 +101,7 @@ stdarch has no wasm f16 intrinsics (stable or nightly).
 
 | Extension | Min `rustc` | Notes |
 |---|---|---|
-| `Vmx`, `PairedSingle`, `Vmx128`, `auto` | 1.95.0 | Stable `asm!` on PowerPC. Paired singles and VMX128 are `.long` words (no assembler knows them). |
+| `Vsx`, `Isa300`, `Mma`, `Vmx`, `PairedSingle`, `Vmx128`, `auto` | 1.95.0 | Stable `asm!` on PowerPC. Paired singles and VMX128 are `.long` words (no assembler knows them). |
 | `Altivec` (intrinsic wrappers) | **nightly** (`nightly-altivec`) | `stdarch_powerpc` + `powerpc_target_feature`. |
 
 ## `prefetch`

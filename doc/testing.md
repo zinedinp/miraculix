@@ -59,7 +59,7 @@ request:
 | `test-target-cpu` | the tests again with `-C target-cpu=x86-64-v2` (compile flags are a floor) |
 | `lint` | `cargo fmt --check`, `cargo clippy`, `cargo doc` |
 | `cross-check` | `cargo check` for every supported target, including Apple iOS, Windows on Arm, i586, RISC-V, LoongArch, PowerPC (32-bit, BE and LE, plus a `cargo build --lib` to assemble the kernels), wasm and bare-metal Cortex-M |
-| `test-powerpc-qemu` | `cargo test` under qemu-user: G4 (`7400`, 32-bit BE) and POWER8 BE with `MIRACULIX_EXPECT_VMX=1`, ppc64le on POWER8/9/10 |
+| `test-powerpc-qemu` | `cargo test` under qemu-user: G4 (`7400`, 32-bit BE, VMX), POWER8 BE (VMX + VSX), ppc64le POWER8/9/10 (VSX, ISA 3.0, MMA); `MIRACULIX_EXPECT_POWER` fails the job if the model's kernels were not detected |
 | `msrv` | `cargo check --tests` on the declared `rust-version` |
 
 GitHub's runners have no AVX-512, so AVX-512 paths still need SDE or real

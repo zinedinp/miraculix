@@ -6,7 +6,7 @@
 //! ([`PowerCore::from_pvr`], [`PowerClass::from_parts`]); only [`pvr`] and
 //! [`cache_line_bytes`] touch the hardware or the OS.
 
-pub use super::pvr::PowerCore;
+pub use super::pvr::{CacheGeometry, PowerCore};
 use super::{Feature, FeatureSet, detect_features};
 
 /// Reads the Processor Version Register (`mfspr 287`) where that is safe.
@@ -149,6 +149,79 @@ pub fn cache_line_bytes() -> Option<u32> {
     PowerCore::detect().cache_line_bytes()
 }
 
+/// Hardware threads per core (the SMT mode: 1, 2, 4 or 8 on POWER), from
+/// Linux's `/sys/devices/system/cpu/cpu0/topology/thread_siblings_list`.
+///
+/// POWER cores share their vector units between threads (POWER9/10: per SMT4
+/// half), so a vector-bound loop often runs best with fewer threads than the
+/// OS shows CPUs. Use this to size a thread pool; measure before settling on a
+/// number. `None` off Linux, or when sysfs is not readable (some containers,
+/// and qemu-user, which shows the host's topology).
+pub fn threads_per_core() -> Option<u32> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let path = c"/sys/devices/system/cpu/cpu0/topology/thread_siblings_list";
+        let mut buf = [0u8; 256];
+        // SAFETY: `path` is NUL-terminated; `read` writes at most `buf.len()`
+        // bytes into `buf`; the descriptor is closed on every path.
+        let n = unsafe {
+            let fd = libc::open(path.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC);
+            if fd < 0 {
+                return None;
+            }
+            let n = libc::read(fd, buf.as_mut_ptr().cast(), buf.len());
+            libc::close(fd);
+            n
+        };
+        if n <= 0 {
+            return None;
+        }
+        super::pvr::cpu_list_len(&buf[..n as usize])
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        None
+    }
+}
+
+/// A data or unified cache level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheLevel {
+    /// L1 data cache.
+    L1d,
+    /// L2.
+    L2,
+    /// L3.
+    L3,
+}
+
+/// Size, line size and associativity of one cache level, from the
+/// `AT_L1D/L2/L3_CACHESIZE` and `..._CACHEGEOMETRY` auxv entries (Linux 4.11+
+/// on PowerPC). `None` elsewhere or when the kernel reports nothing (qemu-user
+/// passes none).
+pub fn cache_geometry(level: CacheLevel) -> Option<CacheGeometry> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let (size, geo): (libc::c_ulong, libc::c_ulong) = match level {
+            CacheLevel::L1d => (42, 43),
+            CacheLevel::L2 => (44, 45),
+            CacheLevel::L3 => (46, 47),
+        };
+        // SAFETY: read-only auxv lookups; 0 means "not present".
+        let (s, g) = unsafe { (libc::getauxval(size), libc::getauxval(geo)) };
+        #[allow(
+            clippy::useless_conversion,
+            reason = "`c_ulong` is `u32` on 32-bit PowerPC"
+        )]
+        CacheGeometry::from_auxv(u64::from(s), u64::from(g))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        let _ = level;
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +278,14 @@ mod tests {
             PowerClass::detect(),
             PowerClass::from_parts(detect_features(), PowerCore::detect())
         );
+        if let Some(t) = threads_per_core() {
+            assert!((1..=64).contains(&t), "{t}");
+        }
+        for level in [CacheLevel::L1d, CacheLevel::L2, CacheLevel::L3] {
+            if let Some(g) = cache_geometry(level) {
+                assert!(g.line == 0 || g.line.is_power_of_two(), "{g:?}");
+            }
+        }
         if let Some(line) = cache_line_bytes() {
             assert!(
                 line.is_power_of_two() && (16..=512).contains(&line),

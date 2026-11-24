@@ -1,8 +1,8 @@
 # PowerPC
 
 **Module:** `miraculix::powerpc` · **Toolchain:** stable (`asm!` is stable on
-PowerPC since Rust 1.95) · **Status:** consoles and big-endian AltiVec first;
-VSX / POWER9 / POWER10 kernels come next.
+PowerPC since Rust 1.95) · **Status:** kernels for consoles, G4/G5 AltiVec
+and POWER7-11 (VSX, ISA 3.0, MMA).
 
 One module covers four very different worlds. Pick your island:
 
@@ -12,7 +12,7 @@ One module covers four very different worlds. Pick your island:
 | PS3 | [PS3: Cell PPE](#ps3-cell-ppe) | `ops::vmx::Vmx` |
 | Xbox 360 | [Xbox 360: VMX128](#xbox-360-vmx128) | `ops::vmx128::Vmx128` + `Vmx` |
 | Power Mac G4 / G5 | [Desktop AltiVec](#g4--g5-altivec) | `ops::vmx::Vmx` |
-| OpenPOWER, IBM POWER7-11 | [OpenPOWER and POWER](#openpower-and-ibm-power) | portable for now |
+| OpenPOWER, IBM POWER7-11 | [OpenPOWER and POWER](#openpower-and-ibm-power) | `ops::vsx::Vsx`, `ops::isa300::Isa300`, `ops::mma::Mma` |
 
 Not sure? `powerpc::auto::*` picks the best kernel at run time on every one
 of them, and `class::PowerClass::detect()` tells you where you are.
@@ -40,6 +40,8 @@ decides. Both are cached once per process
 | `class::PowerCore::detect()` | core family from the PVR (Gekko, 750CL, Espresso, G4, G5, Cell, Xenon, POWER7-11, Microwatt) |
 | `class::pvr()` | raw PVR: Linux (kernel-emulated, costs a trap) and bare metal only |
 | `class::cache_line_bytes()` | 32 (750, G4) or 128 (G5, Cell, Xenon, POWER); `AT_DCACHEBSIZE` on Linux |
+| `class::threads_per_core()` | SMT width from sysfs (Linux) |
+| `class::cache_geometry(level)` | L1d / L2 / L3 size, line, ways from auxv (Linux) |
 
 The levels are named after the open Power ISA versions (OpenPOWER
 Foundation), not IBM chips: `Isa207` = POWER8, `Isa300` = POWER9, `Isa31` =
@@ -68,6 +70,8 @@ in-order cores (Cell, Xenon, 750) never wait on one FP result:
 | `Vmx` | 32 x 128-bit | 4 vectors (element-wise), 8 (reductions) | 8 |
 | `PairedSingle` | 32 FPR x 2 lanes | 4-8 pairs | 8 |
 | `Vmx128` | 128 x 128-bit | 8 vectors per input | 8 (in `v32`-`v39`) |
+| `Vsx` / `Isa300` | 64 x 128-bit | 4 vectors (element-wise), 8-16 (reductions) | 8 |
+| `Mma` | 8 x 512-bit accumulators on `vs0`-`vs31` | 2 + 4 operand vectors per k | 8 tiles of 4 x 4 |
 
 Each module exports its numbers as `UNROLL` / `ACCUMULATORS`.
 
@@ -124,19 +128,33 @@ inputs and results become zero.
 
 ## OpenPOWER and IBM POWER
 
-Detection is complete (ISA 2.06 to 3.1, MMA as its own bit, POWER11 =
-`Isa31`), but little-endian ppc64le runs the portable `auto` code until the
-VSX kernels land. Planned, in this order:
+POWER7 and later, little- or big-endian, plus any OpenPOWER core with VSX:
 
-1. VSX (ISA 2.06/2.07), little- and big-endian.
-2. ISA 3.0: `lxvl` / `stxvl` length-controlled tails (the RVV `vsetvl` idea,
-   no scalar remainder), `xvcvhpsp` for f16.
-3. ISA 3.1: `lxvp` pairs, `xvcvbf16spn`, `vextractbm`.
-4. MMA: a `gemm_f32_kernel` on the eight 512-bit accumulators.
-5. SMT topology (threads per core, cache geometry) for POWER's SMT4/SMT8.
+| Token | ISA | Ops |
+|---|---|---|
+| `ops::vsx::Vsx` | 2.06 (POWER7+) | the full `Vmx` set: element-wise, sum/max/min/argmax/dot, `bf16_to_f32`, `affine_u16_f32` |
+| `ops::isa300::Isa300` | 3.0 (POWER9+) | element-wise, sum and dot with `lxvl` / `stxvl` tails (no scalar remainder, the RVV `vsetvl` idea); `cvt_f16_to_f32_slice` / `cvt_f32_to_f16_slice` (`xvcvhpsp` / `xvcvsphp`, also used by `formats::MiniFloat::F16`) |
+| `ops::mma::Mma` | 3.1 + MMA (POWER10/11) | `gemm_f32_kernel` on the eight 512-bit accumulators (two 8 x 16 halves of the 8 x 32 block) |
 
-Open cores such as Microwatt implement the scalar SFFS subset without VMX/VSX,
-so they stay on `Scalar`.
+- `lxvw4x` / `stxvw4x` load and store in the same element order on both
+  endians and take any address, so the VSX kernels have no alignment head
+  and no endian case (the `u16` widening is the one exception, handled per
+  endianness). VSX float ops are IEEE (no non-Java flush), so `mul_f32` and
+  `affine_u16_f32` match the portable code bit for bit.
+- 64 vector registers: the reductions keep 8 accumulators over 32 floats per
+  trip. MMA puts its accumulators on `vs0`-`vs31`, operands live in `vs32`+.
+
+**SMT.** POWER8-11 run SMT4 or SMT8, and the vector/MMA units are shared per
+SMT4 half (POWER9/10). For vector-bound loops, fewer threads per core than
+the OS shows CPUs is often faster: `class::threads_per_core()` gives the SMT
+width to size a thread pool, `class::cache_geometry()` the cache sizes for
+blocking. Measure before settling on a number. Cache lines are 128 bytes;
+pad per-thread data to that.
+
+Not done yet: ISA 3.1 `lxvp` paired loads, `xvcvbf16spn` / `xvcvspbf16`
+(bf16 encode with the hardware's rounding) and `vextractbm` for argmax and
+compress. Open cores such as Microwatt implement the scalar SFFS subset without
+VMX/VSX, so they stay on `Scalar`.
 
 ## Nightly extras
 

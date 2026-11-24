@@ -83,8 +83,8 @@ pub fn warm_up() {
 }
 
 #[cfg(test)]
-#[path = "test/vmx.rs"]
-mod vmx_tests;
+#[path = "test/ops.rs"]
+mod ops_tests;
 
 #[cfg(test)]
 mod tests {
