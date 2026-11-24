@@ -1,0 +1,18 @@
+# Build: cd scripts/ps-probe && cargo +nightly build --release
+# Needs: rustup component add rust-src --toolchain nightly   (for build-std)
+# Run:   cp target/gekko/release/ps-probe target/gekko/release/ps-probe.elf
+#        then open the .elf in Dolphin (it picks loaders by file extension).
+#
+# A bare-metal ELF for the 750 (Gekko / Broadway / Espresso) that runs the
+# paired-single kernels against scalar references. Result: Dolphin's log
+# (View > Show Log, OSReport enabled) prints `miraculix ps-probe: PASS` or
+# `FAIL <hex mask>`; the same mask is in the symbol `PS_PROBE_RESULT`
+# (0 = pass, 0xFFFFFFFF = never finished, 0xDEAD0000 = panic).
+[build]
+target = "gekko.json"
+[target.gekko]
+rustflags = ["-Clink-arg=-Tlink.x"]
+[unstable]
+build-std = ["core"]
+build-std-features = ["compiler-builtins-mem"]
+json-target-spec = true

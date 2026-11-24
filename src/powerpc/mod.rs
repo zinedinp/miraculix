@@ -1,12 +1,25 @@
-//! powerpc64 (powerpc64le first): [`features`] AltiVec/VSX, [`tiers`]
-//! [`PowerLevel`], [`shortpath`]. Auxv on Linux/Android/FreeBSD; bare compile-time.
-//! BE powerpc64 shares bits; dedicated BE policy is TODO. Once-global: [`detect_level`].
-//! [`ops`]: per-extension token + wrapper API (AltiVec, behind `nightly-altivec`).
+//! PowerPC and Power ISA: game consoles, G4/G5 desktops, OpenPOWER and IBM POWER.
+//!
+//! - [`features`]: [`Feature`] bits from auxv (Linux/Android/FreeBSD), the core
+//!   registers (bare metal) or the compile flags.
+//! - [`tiers`]: [`PowerLevel`], named after the open ISA versions.
+//! - [`class`]: PVR decoding, [`class::PowerClass`] (which console / desktop /
+//!   server), cache-line size.
+//! - [`ops`]: tokens and slice kernels in stable `asm!`: `Vmx` (AltiVec,
+//!   big-endian), `PairedSingle` (GameCube/Wii/Wii U), `Vmx128` (Xbox 360).
+//! - [`auto`]: one call per op, best kernel picked at run time.
+//!
+//! Detection is cached once per process: [`detect_level`], [`detect_features`].
 
 use crate::level_cache::CachedU8;
 
+pub mod auto;
+pub mod class;
 pub mod features;
 pub mod ops;
+// The register-level bare-metal probe is only reached with `target_os = "none"`.
+#[cfg_attr(not(target_os = "none"), allow(dead_code))]
+mod pvr;
 pub mod shortpath;
 pub mod tiers;
 
@@ -22,6 +35,7 @@ static CACHED_FEATURES: features::CachedFeatureSet = features::CachedFeatureSet:
 /// The runtime probe is unioned with the compile-time features, so anything
 /// the binary was built to assume counts even where the OS probe cannot see
 /// it. Prefer this over [`FeatureSet::detect`], which probes every time.
+#[inline]
 pub fn detect_features() -> FeatureSet {
     FeatureSet::compile_time().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
 }
@@ -37,8 +51,9 @@ fn level_from_u8(v: u8) -> Option<PowerLevel> {
         0 => Some(PowerLevel::Scalar),
         1 => Some(PowerLevel::Altivec),
         2 => Some(PowerLevel::Vsx),
-        3 => Some(PowerLevel::Power8),
-        4 => Some(PowerLevel::Power9),
+        3 => Some(PowerLevel::Isa207),
+        4 => Some(PowerLevel::Isa300),
+        5 => Some(PowerLevel::Isa31),
         _ => None,
     }
 }
@@ -53,13 +68,11 @@ pub fn detect_level() -> PowerLevel {
 
 /// Same as [`detect_level`] but always re-probes (no cache). Tests / re-audit only.
 pub fn detect_level_fresh() -> PowerLevel {
+    let host = PowerLevel::detect(detect_features_fresh());
     match shortpath::resolve() {
-        shortpath::ResolvedPath::Assumed(level) => {
-            // Compile flags are a floor, not a ceiling: the host may run higher.
-            let host = PowerLevel::detect(FeatureSet::detect());
-            if host > level { host } else { level }
-        }
-        shortpath::ResolvedPath::Baseline => PowerLevel::detect(FeatureSet::detect()),
+        // Compile flags are a floor, not a ceiling: the host may run higher.
+        shortpath::ResolvedPath::Assumed(level) if level > host => level,
+        _ => host,
     }
 }
 
@@ -68,6 +81,10 @@ pub fn warm_up() {
     let _ = detect_level();
     let _ = detect_features();
 }
+
+#[cfg(test)]
+#[path = "test/vmx.rs"]
+mod vmx_tests;
 
 #[cfg(test)]
 mod tests {
@@ -91,6 +108,13 @@ mod tests {
                 pair[1],
                 pair[0]
             );
+        }
+    }
+
+    #[test]
+    fn every_level_survives_the_cache_encoding() {
+        for &level in PowerLevel::ALL {
+            assert_eq!(level_from_u8(level as u8), Some(level));
         }
     }
 

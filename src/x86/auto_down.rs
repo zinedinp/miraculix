@@ -1493,7 +1493,6 @@ macro_rules! ternary_unfused {
         ) {
             // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
             let _ = features;
-            let features = features;
             // SAFETY: each kernel runs only on a CPU with its feature (SSE and
             // SSE2 are the x86_64 baseline); the caller checked the lengths.
             let done = if Avx::from_features(features).is_some() {
@@ -1708,7 +1707,6 @@ macro_rules! p4_unfused {
         ) {
             // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
             let _ = features;
-            let features = features;
             // SAFETY: as in `ternary_unfused`.
             let done = if Avx::from_features(features).is_some() {
                 unsafe { $avx_kernel(a, b, c, out) }

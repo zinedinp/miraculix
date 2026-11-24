@@ -20,6 +20,10 @@ under an emulator or on matching hardware.
 | Big-endian AArch64 | `qemu-aarch64_be` | `scripts/be-probe` (`cargo +nightly run`) |
 | RISC-V RVV, VLEN 128 to 1024 | `qemu-riscv64` | `scripts/rv-probe` |
 | wasm32 | node (V8, wasip1), wasmtime (wasip1/2/3) | - |
+| PowerPC G4 / BE ppc64 AltiVec (`Vmx`) | `qemu-ppc -cpu 7400`, `qemu-ppc64 -cpu power8` | CI job `test-powerpc-qemu` |
+| ppc64le POWER8-10 | `qemu-ppc64le -cpu power8/9/10` | CI job `test-powerpc-qemu` |
+| GameCube / Wii paired singles | Dolphin (no QEMU model has them) | `scripts/ps-probe` (nightly, run by hand) |
+| Xbox 360 VMX128 | none automatable | encodings only (host tests in `powerpc/ops/encode.rs`) |
 
 ## Oracles
 
@@ -38,7 +42,11 @@ cargo check --tests --target aarch64-unknown-linux-gnu
 cargo check --tests --target riscv64gc-unknown-linux-gnu
 cargo check --tests --target i686-unknown-linux-gnu
 cargo check --target wasm32-unknown-unknown
+cargo build --lib --target powerpc64-unknown-linux-gnu   # assembles the asm! kernels
 ```
+
+`cargo check` never runs LLVM, so it cannot catch a bad mnemonic inside
+`asm!`; for PowerPC (and anything else written in `asm!`) build the library.
 
 ## CI
 
@@ -50,7 +58,8 @@ request:
 | `test` | `cargo test` (debug, release, `--no-default-features`) on real x86_64 Linux, aarch64 Linux, Apple Silicon macOS and x86_64 Windows |
 | `test-target-cpu` | the tests again with `-C target-cpu=x86-64-v2` (compile flags are a floor) |
 | `lint` | `cargo fmt --check`, `cargo clippy`, `cargo doc` |
-| `cross-check` | `cargo check` for every supported target, including Apple iOS, Windows on Arm, i586, RISC-V, LoongArch, PowerPC, wasm and bare-metal Cortex-M |
+| `cross-check` | `cargo check` for every supported target, including Apple iOS, Windows on Arm, i586, RISC-V, LoongArch, PowerPC (32-bit, BE and LE, plus a `cargo build --lib` to assemble the kernels), wasm and bare-metal Cortex-M |
+| `test-powerpc-qemu` | `cargo test` under qemu-user: G4 (`7400`, 32-bit BE) and POWER8 BE with `MIRACULIX_EXPECT_VMX=1`, ppc64le on POWER8/9/10 |
 | `msrv` | `cargo check --tests` on the declared `rust-version` |
 
 GitHub's runners have no AVX-512, so AVX-512 paths still need SDE or real

@@ -262,6 +262,10 @@ pub(crate) fn lerp_scalar(a: &[u8], b: &[u8], num: u16, den: u16, out: &mut [u8]
 /// never off by enough to cross an integer (a non-integer quotient under 256 is at
 /// least `1 / (2 * den)` from one, more than half an ulp).
 #[inline]
+#[cfg_attr(
+    any(target_arch = "powerpc", target_arch = "powerpc64"),
+    allow(dead_code, reason = "PowerPC has no vector lerp yet")
+)]
 pub(crate) fn lerp_operands(num: u16, den: u16) -> [f32; 4] {
     let (num, den) = (f32::from(num), f32::from(den));
     [den - num, num, den, 2.0 * den]

@@ -45,7 +45,8 @@ All topics: [doc/](doc/README.md).
 | [AArch32](doc/platforms/aarch32.md) | ✓ | ✓ nightly | - | Neon, VFPv4, DSP (nightly) | - |
 | [RISC-V](doc/platforms/riscv.md) | ✓ | f32/i32 core | ✓ | `Rvv`, `Zvfh`, `Zvfbf*` | - |
 | [WebAssembly](doc/platforms/wasm.md) | host flags | ✓ | - | `Simd128`, `RelaxedSimd` | - |
-| [LoongArch / PowerPC](doc/platforms/loongarch-powerpc.md) | ✓ | - | - | AltiVec (nightly) | - |
+| [PowerPC](doc/platforms/powerpc.md) (consoles, G4/G5, POWER) | ✓ | ✓ VMX, paired singles | ✓ | `Vmx`, `PairedSingle`, `Vmx128` | - |
+| [LoongArch](doc/platforms/loongarch.md) | ✓ | - | - | - | - |
 
 Every target also gets [`prefetch`, `formats` and `mmio`](doc/modules.md).
 
@@ -160,9 +161,8 @@ Cost table, a full `Simd` struct example, and per-arch details:
 | `wasm-relaxed-simd` | off | wasm relaxed-SIMD bodies |
 | `phi-asm` | off | Xeon Phi 4FMAPS / 4VNNIW / ER / PF ops |
 | `nightly-arm-neon` | off | AArch32 Neon / DSP ops and ARM `prefetch` (nightly) |
-| `nightly-altivec` | off | PowerPC AltiVec ops (nightly) |
+| `nightly-altivec` | off | PowerPC AltiVec intrinsic wrappers (nightly; the `asm!` kernels need nothing) |
 | `nightly-rtm` | off | x86 RTM / TSX (nightly) |
-| `nightly-powerpc-asm` | off | PowerPC `prefetch` (nightly) |
 
 ## Safety in one paragraph
 

@@ -72,7 +72,9 @@ jobs:
           - { target: armv7-unknown-linux-gnueabihf, tests: true }
           - { target: riscv64gc-unknown-linux-gnu, tests: true }
           - { target: loongarch64-unknown-linux-gnu, tests: true }
-          - { target: powerpc64le-unknown-linux-gnu, tests: true }
+          - { target: powerpc-unknown-linux-gnu, tests: true, asm: true }
+          - { target: powerpc64-unknown-linux-gnu, tests: true, asm: true }
+          - { target: powerpc64le-unknown-linux-gnu, tests: true, asm: true }
           - { target: wasm32-unknown-unknown, tests: true }
           - { target: thumbv6m-none-eabi, tests: false }
           - { target: thumbv7em-none-eabi, tests: false }
@@ -87,6 +89,43 @@ jobs:
         run: cargo check --tests --target ${{ matrix.target }}
       - if: ${{ !matrix.tests }}
         run: cargo check --target ${{ matrix.target }}
+      # `cargo check` never runs LLVM, so it would not catch a bad mnemonic in
+      # an `asm!` block. Building the library assembles every kernel.
+      - if: matrix.asm
+        run: cargo build --lib --release --target ${{ matrix.target }}
+
+  # Run the PowerPC tests under qemu-user. The big-endian jobs execute the VMX
+  # kernels (`MIRACULIX_EXPECT_VMX` makes sure they did not skip); the ppc64le
+  # jobs run the portable `auto` paths on POWER8-10 models. Paired singles
+  # (GameCube/Wii/Wii U) and VMX128 (Xbox 360) have no QEMU model: their
+  # encodings are tested on the host, their kernels only on the device.
+  test-powerpc-qemu:
+    name: qemu (${{ matrix.target }}, ${{ matrix.cpu }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # G4: 32-bit big-endian AltiVec.
+          - { target: powerpc-unknown-linux-gnu, env: POWERPC_UNKNOWN_LINUX_GNU, gnu: powerpc-linux-gnu, qemu: qemu-ppc, cpu: "7400", vmx: "1" }
+          # 64-bit big-endian AltiVec. POWER8 rather than the G5 (970): the
+          # distro's ppc64 glibc may use newer instructions than a 970 has.
+          - { target: powerpc64-unknown-linux-gnu, env: POWERPC64_UNKNOWN_LINUX_GNU, gnu: powerpc64-linux-gnu, qemu: qemu-ppc64, cpu: power8, vmx: "1" }
+          - { target: powerpc64le-unknown-linux-gnu, env: POWERPC64LE_UNKNOWN_LINUX_GNU, gnu: powerpc64le-linux-gnu, qemu: qemu-ppc64le, cpu: power8, vmx: "" }
+          - { target: powerpc64le-unknown-linux-gnu, env: POWERPC64LE_UNKNOWN_LINUX_GNU, gnu: powerpc64le-linux-gnu, qemu: qemu-ppc64le, cpu: power9, vmx: "" }
+          - { target: powerpc64le-unknown-linux-gnu, env: POWERPC64LE_UNKNOWN_LINUX_GNU, gnu: powerpc64le-linux-gnu, qemu: qemu-ppc64le, cpu: power10, vmx: "" }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: sudo apt-get update && sudo apt-get install -y qemu-user gcc-${{ matrix.gnu }}
+      - run: |
+          echo "CARGO_TARGET_${{ matrix.env }}_LINKER=${{ matrix.gnu }}-gcc" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_${{ matrix.env }}_RUNNER=${{ matrix.qemu }} -cpu ${{ matrix.cpu }} -L /usr/${{ matrix.gnu }}" >> "$GITHUB_ENV"
+          if [ -n "${{ matrix.vmx }}" ]; then echo "MIRACULIX_EXPECT_VMX=1" >> "$GITHUB_ENV"; fi
+      - run: cargo test --target ${{ matrix.target }}
+      - run: cargo test --release --target ${{ matrix.target }}
 
   msrv:
     runs-on: ubuntu-latest

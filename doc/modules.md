@@ -21,7 +21,7 @@ Safe: a prefetch is a hint and never faults, even on a bad address.
 | ARM | `pld` / `pli` (with `nightly-arm-neon`) |
 | RISC-V | Zicbop hints (no detection needed: they are `ori x0` encodings) |
 | LoongArch64 | `preld` |
-| PowerPC | `dcbt` / `dcbtst` (with `nightly-powerpc-asm`) |
+| PowerPC | `dcbt` / `dcbtst` |
 | elsewhere | no-op |
 
 ## `formats`

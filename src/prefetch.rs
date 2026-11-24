@@ -7,7 +7,7 @@
 //! | arm (`nightly-arm-neon`) | `pld` (ARM state from ARMv5TE, Thumb-2) | `pld` | `pli` (ARMv7) |
 //! | riscv32 / riscv64 | `prefetch.r` (Zicbop) | `prefetch.w` | `prefetch.i` |
 //! | loongarch64 | `preld 0` | `preld 8` | - |
-//! | powerpc / powerpc64 (`nightly-powerpc-asm`) | `dcbt` | `dcbtst` | - |
+//! | powerpc / powerpc64 | `dcbt` | `dcbtst` | - |
 //! | wasm and the rest | - | - | - |
 //!
 //! A prefetch never faults, whatever the address (null, unmapped, past an allocation's end), so
@@ -23,8 +23,8 @@
 //!   Extensions, which no `target_feature` reports, so [`write`] uses `pld`.
 //! - RISC-V: the Zicbop encodings are `ori x0` hints, which harts without Zicbop run as no-ops,
 //!   so no detection is needed.
-//! - PowerPC: `asm!` there is unstable, so the hints need the `nightly-powerpc-asm` feature;
-//!   without it they do nothing.
+//! - PowerPC: `dcbt` / `dcbtst` exist on every PowerPC (750, G4/G5, Cell, Xenon, POWER).
+//!   `asm!` there is stable since Rust 1.95, so no feature is needed.
 
 /// Which caches the line should end up in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -311,10 +311,7 @@ mod imp {
     }
 }
 
-#[cfg(all(
-    any(target_arch = "powerpc", target_arch = "powerpc64"),
-    feature = "nightly-powerpc-asm"
-))]
+#[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
 mod imp {
     use super::Locality;
 
@@ -350,10 +347,8 @@ mod imp {
     target_arch = "riscv32",
     target_arch = "riscv64",
     target_arch = "loongarch64",
-    all(
-        any(target_arch = "powerpc", target_arch = "powerpc64"),
-        feature = "nightly-powerpc-asm"
-    )
+    target_arch = "powerpc",
+    target_arch = "powerpc64"
 )))]
 mod imp {
     use super::Locality;

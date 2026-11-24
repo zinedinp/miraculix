@@ -101,7 +101,8 @@ stdarch has no wasm f16 intrinsics (stable or nightly).
 
 | Extension | Min `rustc` | Notes |
 |---|---|---|
-| AltiVec | **nightly** (`nightly-altivec`) | `stdarch_powerpc` + `powerpc_target_feature`. |
+| `Vmx`, `PairedSingle`, `Vmx128`, `auto` | 1.95.0 | Stable `asm!` on PowerPC. Paired singles and VMX128 are `.long` words (no assembler knows them). |
+| `Altivec` (intrinsic wrappers) | **nightly** (`nightly-altivec`) | `stdarch_powerpc` + `powerpc_target_feature`. |
 
 ## `prefetch`
 
@@ -110,7 +111,7 @@ stdarch has no wasm f16 intrinsics (stable or nightly).
 | x86 / x86_64 | 1.27.0 | `_mm_prefetch` (`simd_x86`); `prefetchw` through `asm!`, gated on `Feature::Prfchw`. |
 | aarch64, riscv, loongarch64 | `asm!` | No stable prefetch intrinsics there (`_prefetch` is unstable). |
 | arm | **nightly** (`nightly-arm-neon`) | `asm!`, but `pld`/`pli` depend on the ARM version, which only `arm_target_feature` reports; without it the hints are no-ops. |
-| powerpc / powerpc64 | **nightly** (`nightly-powerpc-asm`) | `asm_experimental_arch`; without it the hints are no-ops. |
+| powerpc / powerpc64 | 1.95.0 | `dcbt` / `dcbtst` through `asm!` (stable on PowerPC since 1.95). |
 
 ## Adding a new extension
 

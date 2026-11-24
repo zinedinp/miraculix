@@ -103,13 +103,6 @@
 )]
 #![cfg_attr(feature = "nightly-rtm", feature(stdarch_x86_rtm, rtm_target_feature))]
 #![cfg_attr(
-    all(
-        feature = "nightly-powerpc-asm",
-        any(target_arch = "powerpc", target_arch = "powerpc64")
-    ),
-    feature(asm_experimental_arch)
-)]
-#![cfg_attr(
     all(feature = "nightly-arm-neon", target_arch = "arm"),
     feature(
         stdarch_arm_dsp,
@@ -154,7 +147,9 @@ mod level_cache;
     target_arch = "x86_64",
     target_arch = "aarch64",
     target_arch = "riscv32",
-    target_arch = "riscv64"
+    target_arch = "riscv64",
+    target_arch = "powerpc",
+    target_arch = "powerpc64"
 ))]
 mod reduce_common;
 
@@ -203,10 +198,20 @@ pub mod riscv;
 #[cfg(any(target_arch = "loongarch32", target_arch = "loongarch64"))]
 pub mod loongarch;
 
-/// PowerPC: AltiVec / VSX detect (and optional ops behind `nightly-altivec`).
-// powerpc64 (LE first): auxv AltiVec/VSX or bare cfg.
+/// PowerPC: consoles (paired singles, Cell, VMX128), G4/G5 AltiVec and
+/// OpenPOWER / IBM POWER detection, with stable-`asm!` kernels and `auto`.
 #[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
 pub mod powerpc;
+
+// The pure PowerPC decoders (PVR table, instruction encoders) also run their
+// tests on the host, where no PowerPC hardware or emulator is needed.
+#[cfg(all(test, not(any(target_arch = "powerpc", target_arch = "powerpc64"))))]
+#[path = "powerpc/ops/encode.rs"]
+mod powerpc_encode_host_tests;
+#[cfg(all(test, not(any(target_arch = "powerpc", target_arch = "powerpc64"))))]
+#[allow(dead_code)]
+#[path = "powerpc/pvr.rs"]
+mod powerpc_pvr_host_tests;
 
 /// WebAssembly: simd128 / relaxed-simd from `cfg` or runtime flags; ops and
 /// `auto` on wasm32.
