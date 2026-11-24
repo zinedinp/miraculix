@@ -155,7 +155,7 @@ Cost table, a full `Simd` struct example, and per-arch details:
 
 | Feature | Default | Purpose |
 |---|---|---|
-| `wider-bus-lift` | on | Experimental extra `auto_up` rung on x86 |
+| `wider-bus-lift` | on | Experimental SSE→AVX lift in `auto_down` (AVX without AVX2 CPUs) |
 | `wasm-simd` | on | wasm: compile `wasm::ops` / `wasm::auto`. Off for modules that must load without simd128 |
 | `wasm-relaxed-simd` | off | wasm relaxed-SIMD bodies |
 | `phi-asm` | off | Xeon Phi 4FMAPS / 4VNNIW / ER / PF ops |

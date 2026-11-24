@@ -65,9 +65,9 @@ wasm-relaxed-simd = ["wasm-simd"]
 # Native Xeon Phi (Knights Landing/Knights Mill, both EOL since 2020) ops:
 # AVX512_4FMAPS, AVX512_4VNNIW, AVX512ER, AVX512PF.
 phi-asm = []
-# EXPERIMENTAL, default-on. Extra `auto_up` dispatch rung between adjacent
-# SIMD tiers (SSE->AVX, AVX2->AVX-512): two narrower chains on a wider bus
-# instead of one.
+# EXPERIMENTAL, default-on. Extra `auto_down` dispatch rung (SSE -> AVX, CPUs with
+# AVX but no AVX2): two 128-bit chains per iteration. There is no AVX2 -> AVX-512
+# rung: AVX-512F is always taken first.
 wider-bus-lift = []
 
 [dependencies]

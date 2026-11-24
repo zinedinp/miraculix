@@ -75,33 +75,6 @@ slice_binop_matches_scalar_test!(
     |x: i32, y: i32| x / y,
     i32
 );
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    add_i32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    add_i32_slice_lifted,
-    |x: i32, y: i32| x.wrapping_add(y),
-    i32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    sub_i32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    sub_i32_slice_lifted,
-    |x: i32, y: i32| x.wrapping_sub(y),
-    i32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    mul_i32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    mul_i32_slice_lifted,
-    |x: i32, y: i32| x.wrapping_mul(y),
-    i32
-);
 
 slice_binop_matches_scalar_test!(
     add_u32_slice_matches_scalar,
@@ -138,33 +111,6 @@ slice_binop_matches_scalar_test!(
     |x, y| x.max(y),
     u32
 );
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    add_u32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    add_u32_slice_lifted,
-    |x: u32, y: u32| x.wrapping_add(y),
-    u32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    sub_u32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    sub_u32_slice_lifted,
-    |x: u32, y: u32| x.wrapping_sub(y),
-    u32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    mul_u32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    mul_u32_slice_lifted,
-    |x: u32, y: u32| x.wrapping_mul(y),
-    u32
-);
 slice_binop_matches_scalar_test!(
     div_u32_slice_matches_scalar,
     Avx2,
@@ -191,33 +137,6 @@ slice_binop_matches_scalar_test!(
     cmpeq_i32_slice_matches_scalar,
     Avx2,
     cmpeq_i32_slice,
-    |x, y| if x == y { -1 } else { 0 },
-    i32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    and_i32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    and_i32_slice_lifted,
-    |x, y| x & y,
-    i32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    xor_u32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    xor_u32_slice_lifted,
-    |x, y| x ^ y,
-    u32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    cmpeq_i32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    cmpeq_i32_slice_lifted,
     |x, y| if x == y { -1 } else { 0 },
     i32
 );
@@ -408,15 +327,6 @@ slice_binop_matches_scalar_test!(
     cmpgt_i32_slice_matches_scalar,
     Avx2,
     cmpgt_i32_slice,
-    |x, y| if x > y { -1 } else { 0 },
-    i32
-);
-#[cfg(feature = "wider-bus-lift")]
-slice_binop_lifted_matches_scalar_test!(
-    cmpgt_i32_slice_lifted_matches_scalar,
-    Avx2,
-    Avx512FVl,
-    cmpgt_i32_slice_lifted,
     |x, y| if x > y { -1 } else { 0 },
     i32
 );

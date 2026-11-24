@@ -29,19 +29,10 @@ use crate::x86::arch::{
 };
 
 use super::super::super::{Feature, FeatureSet, GenericLevel};
-#[cfg(feature = "wider-bus-lift")]
-use super::super::avx512::avx512vl::Avx512FVl;
 use super::super::macros::{
-    scalar_only_binop, simd_binop, simd_binop_lifted, simd_extract_imm, simd_insert_imm,
-    simd_movemask, simd_shift_imm, simd_ternop, simd_unop,
+    scalar_only_binop, simd_binop, simd_extract_imm, simd_insert_imm, simd_movemask,
+    simd_shift_imm, simd_ternop, simd_unop,
 };
-
-// Every `Avx2`-token lift below uses `lift_target_feature = "avx2,avx512f,avx512vl"`
-// and `lift_proof = Avx512FVl`:
-// still issues 256-bit `avx2` instructions (two independent chains per
-// iteration), `avx512f,avx512vl` only widens the register file/encoding
-// LLVM can pick from. `#[target_feature(enable = ...)]` requires a literal,
-// so this can't be a `const`.
 
 /// Proof token: AVX2 available. Zero-sized, `Copy`.
 #[derive(Debug, Clone, Copy)]
@@ -295,16 +286,6 @@ fn alignr_u8x32_full_scalar(a: &[u8; 32], b: &[u8; 32], imm: i32) -> Vec<u8> {
 }
 
 macro_rules! avx2_i32_binop {
-	($fixed_fn:ident, $slice_fn:ident, $intrinsic_fn:ident, $intrinsic:path, $scalar:expr, $fixed_doc:literal, $slice_doc:literal, lifted_fn = $lifted_fn:ident,) => {
-		avx2_i32_binop!($fixed_fn, $slice_fn, $intrinsic_fn, $intrinsic, $scalar, $fixed_doc, $slice_doc);
-		simd_binop_lifted! {
-			token = Avx2, lift_target_feature = "avx2,avx512f,avx512vl",
-			lifted_fn = $lifted_fn, lift_proof = Avx512FVl,
-			width = 8, elem = i32, vec = __m256i, loadu = _mm256_loadu_si256, storeu = _mm256_storeu_si256,
-			intrinsic = $intrinsic, scalar = $scalar,
-			lifted_doc = $slice_doc,
-		}
-	};
 	($fixed_fn:ident, $slice_fn:ident, $intrinsic_fn:ident, $intrinsic:path, $scalar:expr, $fixed_doc:literal, $slice_doc:literal) => {
 		simd_binop! {
 			token = Avx2, target_feature = "avx2",
@@ -317,16 +298,6 @@ macro_rules! avx2_i32_binop {
 }
 
 macro_rules! avx2_u32_binop {
-	($fixed_fn:ident, $slice_fn:ident, $intrinsic_fn:ident, $intrinsic:path, $scalar:expr, $fixed_doc:literal, $slice_doc:literal, lifted_fn = $lifted_fn:ident,) => {
-		avx2_u32_binop!($fixed_fn, $slice_fn, $intrinsic_fn, $intrinsic, $scalar, $fixed_doc, $slice_doc);
-		simd_binop_lifted! {
-			token = Avx2, lift_target_feature = "avx2,avx512f,avx512vl",
-			lifted_fn = $lifted_fn, lift_proof = Avx512FVl,
-			width = 8, elem = u32, vec = __m256i, loadu = _mm256_loadu_si256, storeu = _mm256_storeu_si256,
-			intrinsic = $intrinsic, scalar = $scalar,
-			lifted_doc = $slice_doc,
-		}
-	};
 	($fixed_fn:ident, $slice_fn:ident, $intrinsic_fn:ident, $intrinsic:path, $scalar:expr, $fixed_doc:literal, $slice_doc:literal) => {
 		simd_binop! {
 			token = Avx2, target_feature = "avx2",
@@ -345,8 +316,7 @@ avx2_i32_binop!(
     _mm256_add_epi32,
     |x: i32, y: i32| x.wrapping_add(y),
     "`a + b` per lane, wrapping (`vpaddd`, 256-bit).",
-    "`out[i] = a[i].wrapping_add(b[i])`. 8-wide `add_i32x8` chunks, scalar remainder.",
-    lifted_fn = add_i32_slice_lifted,
+    "`out[i] = a[i].wrapping_add(b[i])`. 8-wide `add_i32x8` chunks, scalar remainder."
 );
 avx2_i32_binop!(
     sub_i32x8,
@@ -355,8 +325,7 @@ avx2_i32_binop!(
     _mm256_sub_epi32,
     |x: i32, y: i32| x.wrapping_sub(y),
     "`a - b` per lane, wrapping (`vpsubd`, 256-bit).",
-    "`out[i] = a[i].wrapping_sub(b[i])`. 8-wide `sub_i32x8` chunks, scalar remainder.",
-    lifted_fn = sub_i32_slice_lifted,
+    "`out[i] = a[i].wrapping_sub(b[i])`. 8-wide `sub_i32x8` chunks, scalar remainder."
 );
 avx2_i32_binop!(
     mul_i32x8,
@@ -365,8 +334,7 @@ avx2_i32_binop!(
     _mm256_mullo_epi32,
     |x: i32, y: i32| x.wrapping_mul(y),
     "`a * b` per lane, low 32 bits (`vpmulld`, 256-bit).",
-    "`out[i] = a[i].wrapping_mul(b[i])`. 8-wide `mul_i32x8` chunks, scalar remainder.",
-    lifted_fn = mul_i32_slice_lifted,
+    "`out[i] = a[i].wrapping_mul(b[i])`. 8-wide `mul_i32x8` chunks, scalar remainder."
 );
 avx2_i32_binop!(
     min_i32x8,
@@ -402,8 +370,7 @@ avx2_u32_binop!(
     _mm256_add_epi32,
     |x: u32, y: u32| x.wrapping_add(y),
     "`a + b` per lane, wrapping (`vpaddd`, 256-bit).",
-    "`out[i] = a[i].wrapping_add(b[i])`. 8-wide `add_u32x8` chunks, scalar remainder.",
-    lifted_fn = add_u32_slice_lifted,
+    "`out[i] = a[i].wrapping_add(b[i])`. 8-wide `add_u32x8` chunks, scalar remainder."
 );
 avx2_u32_binop!(
     sub_u32x8,
@@ -412,8 +379,7 @@ avx2_u32_binop!(
     _mm256_sub_epi32,
     |x: u32, y: u32| x.wrapping_sub(y),
     "`a - b` per lane, wrapping (`vpsubd`, 256-bit).",
-    "`out[i] = a[i].wrapping_sub(b[i])`. 8-wide `sub_u32x8` chunks, scalar remainder.",
-    lifted_fn = sub_u32_slice_lifted,
+    "`out[i] = a[i].wrapping_sub(b[i])`. 8-wide `sub_u32x8` chunks, scalar remainder."
 );
 avx2_u32_binop!(
     mul_u32x8,
@@ -422,8 +388,7 @@ avx2_u32_binop!(
     _mm256_mullo_epi32,
     |x: u32, y: u32| x.wrapping_mul(y),
     "`a * b` per lane, low 32 bits (`vpmulld`, 256-bit).",
-    "`out[i] = a[i].wrapping_mul(b[i])`. 8-wide `mul_u32x8` chunks, scalar remainder.",
-    lifted_fn = mul_u32_slice_lifted,
+    "`out[i] = a[i].wrapping_mul(b[i])`. 8-wide `mul_u32x8` chunks, scalar remainder."
 );
 avx2_u32_binop!(
     min_u32x8,
@@ -459,8 +424,7 @@ avx2_i32_binop!(
     _mm256_and_si256,
     |x, y| x & y,
     "`a & b` per lane (`vpand`, 256-bit).",
-    "`out[i] = a[i] & b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = and_i32_slice_lifted,
+    "`out[i] = a[i] & b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_i32_binop!(
     or_i32x8,
@@ -469,8 +433,7 @@ avx2_i32_binop!(
     _mm256_or_si256,
     |x, y| x | y,
     "`a | b` per lane (`vpor`, 256-bit).",
-    "`out[i] = a[i] | b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = or_i32_slice_lifted,
+    "`out[i] = a[i] | b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_i32_binop!(
     xor_i32x8,
@@ -479,8 +442,7 @@ avx2_i32_binop!(
     _mm256_xor_si256,
     |x, y| x ^ y,
     "`a ^ b` per lane (`vpxor`, 256-bit).",
-    "`out[i] = a[i] ^ b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = xor_i32_slice_lifted,
+    "`out[i] = a[i] ^ b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_i32_binop!(
     andnot_i32x8,
@@ -489,8 +451,7 @@ avx2_i32_binop!(
     _mm256_andnot_si256,
     |x, y| !x & y,
     "`!a & b` per lane (`vpandn`, 256-bit).",
-    "`out[i] = !a[i] & b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = andnot_i32_slice_lifted,
+    "`out[i] = !a[i] & b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_i32_binop!(
     cmpeq_i32x8,
@@ -499,8 +460,7 @@ avx2_i32_binop!(
     _mm256_cmpeq_epi32,
     |x, y| if x == y { -1 } else { 0 },
     "Lane equality mask (`vpcmpeqd`, 256-bit): all-1s if equal, else 0.",
-    "`out[i] = all-1s if a[i]==b[i] else 0`. 8-wide chunks, scalar remainder.",
-    lifted_fn = cmpeq_i32_slice_lifted,
+    "`out[i] = all-1s if a[i]==b[i] else 0`. 8-wide chunks, scalar remainder."
 );
 
 avx2_u32_binop!(
@@ -510,8 +470,7 @@ avx2_u32_binop!(
     _mm256_and_si256,
     |x, y| x & y,
     "`a & b` per lane (`vpand`, 256-bit).",
-    "`out[i] = a[i] & b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = and_u32_slice_lifted,
+    "`out[i] = a[i] & b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_u32_binop!(
     or_u32x8,
@@ -520,8 +479,7 @@ avx2_u32_binop!(
     _mm256_or_si256,
     |x, y| x | y,
     "`a | b` per lane (`vpor`, 256-bit).",
-    "`out[i] = a[i] | b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = or_u32_slice_lifted,
+    "`out[i] = a[i] | b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_u32_binop!(
     xor_u32x8,
@@ -530,8 +488,7 @@ avx2_u32_binop!(
     _mm256_xor_si256,
     |x, y| x ^ y,
     "`a ^ b` per lane (`vpxor`, 256-bit).",
-    "`out[i] = a[i] ^ b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = xor_u32_slice_lifted,
+    "`out[i] = a[i] ^ b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_u32_binop!(
     andnot_u32x8,
@@ -540,8 +497,7 @@ avx2_u32_binop!(
     _mm256_andnot_si256,
     |x, y| !x & y,
     "`!a & b` per lane (`vpandn`, 256-bit).",
-    "`out[i] = !a[i] & b[i]`. 8-wide chunks, scalar remainder.",
-    lifted_fn = andnot_u32_slice_lifted,
+    "`out[i] = !a[i] & b[i]`. 8-wide chunks, scalar remainder."
 );
 avx2_u32_binop!(
     cmpeq_u32x8,
@@ -550,8 +506,7 @@ avx2_u32_binop!(
     _mm256_cmpeq_epi32,
     |x, y| if x == y { !0 } else { 0 },
     "Lane equality mask (`vpcmpeqd`, 256-bit): all-1s if equal, else 0.",
-    "`out[i] = all-1s if a[i]==b[i] else 0`. 8-wide chunks, scalar remainder.",
-    lifted_fn = cmpeq_u32_slice_lifted,
+    "`out[i] = all-1s if a[i]==b[i] else 0`. 8-wide chunks, scalar remainder."
 );
 
 // i64/u64 add/sub: native AVX2. min/max: composed via cmpgt+blendv (no native
@@ -1235,8 +1190,7 @@ avx2_i32_binop!(
     _mm256_cmpgt_epi32,
     |x, y| if x > y { -1 } else { 0 },
     "Lane greater-than mask (`vpcmpgtd`, 256-bit): all-1s if `a>b`, else 0.",
-    "`out[i] = all-1s if a[i]>b[i] else 0`. 8-wide chunks, scalar remainder.",
-    lifted_fn = cmpgt_i32_slice_lifted,
+    "`out[i] = all-1s if a[i]>b[i] else 0`. 8-wide chunks, scalar remainder."
 );
 
 impl Avx2 {

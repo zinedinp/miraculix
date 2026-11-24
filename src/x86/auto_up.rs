@@ -37,29 +37,6 @@
 //!   the SIMD lanes on NaN inputs.
 //! - `f16` min/max scalar path widens to `f32`, applies the rule above, narrows.
 
-/// Must be used in tail position inside a `pub fn` (expands to `return`).
-/// `$lifted` is a closure `|proof: Avx512FVl| -> _` (not a plain `expr`):
-/// the `_lifted` token methods take the `Avx512FVl` proof as an explicit
-/// parameter (they need more than the `Avx2`/etc. token they're an inherent
-/// method on proves), and macro hygiene means `auto_up!` can't bind a name
-/// into `$lifted`'s own scope
-#[cfg(feature = "wider-bus-lift")]
-macro_rules! auto_up {
-    ($lifted:expr, $plain:expr) => {{
-        if let Some(proof) =
-            crate::x86::ops::avx512::avx512vl::Avx512FVl::from_features(super::detect_features())
-        {
-            return ($lifted)(proof);
-        }
-        return $plain;
-    }};
-}
-#[cfg(not(feature = "wider-bus-lift"))]
-macro_rules! auto_up {
-    ($lifted:expr, $plain:expr) => {{
-        return $plain;
-    }};
-}
 use super::ops::{
     avx::avx_ifma::AvxIfma, avx::avx_vnni::AvxVnni, avx::avx_vnni::vnni_acc_saturating,
     avx::avx_vnni::vnni_acc_wrapping, avx::avx2::Avx2, avx::f16c::F16c,
@@ -75,32 +52,9 @@ use super::ops::{
 pub use super::reduce::bf16_to_f32;
 
 /// Regular int binop, both `baseline` and `probed` bottom families share this
-/// exact "up" shape (`Avx512f` -> `Avx2`[+lift]): only their bottom tier
-/// (in `auto_down.rs`) differs. `lifted = ...,` arm for the 18 i32/u32 ops the
-/// wider-bus lift covers; the plain arm for everything else.
+/// exact "up" shape (`Avx512f` -> `Avx2`): only their bottom tier
+/// (in `auto_down.rs`) differs.
 macro_rules! auto_binop_up {
-    ($fn_name:ident, $slice_method:ident, $Elem:ty, $doc:literal, lifted = $lifted:ident,) => {
-        #[doc = $doc]
-        ///
-        /// # Panics
-        /// `a.len() != b.len() || out.len() != a.len()`.
-        #[inline]
-        pub fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
-            assert_eq!(a.len(), b.len());
-            assert_eq!(out.len(), a.len());
-            let features = super::detect_features();
-            if let Some(t) = Avx512f::from_features(features) {
-                return t.$slice_method(a, b, out);
-            }
-            if let Some(t) = Avx2::from_features(features) {
-                auto_up!(
-                    |proof| t.$lifted(proof, a, b, out),
-                    t.$slice_method(a, b, out)
-                );
-            }
-            super::auto_down::$fn_name(a, b, out)
-        }
-    };
     ($fn_name:ident, $slice_method:ident, $Elem:ty, $doc:literal) => {
         #[doc = $doc]
         ///
@@ -375,15 +329,13 @@ auto_binop_up!(
     add_i32,
     add_i32_slice,
     i32,
-    "`out[i] = a[i].wrapping_add(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = add_i32_slice_lifted,
+    "`out[i] = a[i].wrapping_add(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     sub_i32,
     sub_i32_slice,
     i32,
-    "`out[i] = a[i].wrapping_sub(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = sub_i32_slice_lifted,
+    "`out[i] = a[i].wrapping_sub(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     div_i32,
@@ -395,8 +347,7 @@ auto_binop_up!(
     mul_i32,
     mul_i32_slice,
     i32,
-    "`out[i] = a[i].wrapping_mul(b[i])`, best tier (AVX-512F / AVX2 / SSE4.1 / scalar). SSE4.1 rung is a real probe, not ABI-baseline.",
-    lifted = mul_i32_slice_lifted,
+    "`out[i] = a[i].wrapping_mul(b[i])`, best tier (AVX-512F / AVX2 / SSE4.1 / scalar). SSE4.1 rung is a real probe, not ABI-baseline."
 );
 auto_binop_up!(
     min_i32,
@@ -414,43 +365,37 @@ auto_binop_up!(
     and_i32,
     and_i32_slice,
     i32,
-    "`out[i] = a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = and_i32_slice_lifted,
+    "`out[i] = a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     or_i32,
     or_i32_slice,
     i32,
-    "`out[i] = a[i] | b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = or_i32_slice_lifted,
+    "`out[i] = a[i] | b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     xor_i32,
     xor_i32_slice,
     i32,
-    "`out[i] = a[i] ^ b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = xor_i32_slice_lifted,
+    "`out[i] = a[i] ^ b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     andnot_i32,
     andnot_i32_slice,
     i32,
-    "`out[i] = !a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = andnot_i32_slice_lifted,
+    "`out[i] = !a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     cmpeq_i32,
     cmpeq_i32_slice,
     i32,
-    "`out[i] = all-1s if a[i]==b[i] else 0` (lane mask, not bool), best tier.",
-    lifted = cmpeq_i32_slice_lifted,
+    "`out[i] = all-1s if a[i]==b[i] else 0` (lane mask, not bool), best tier."
 );
 auto_binop_up!(
     cmpgt_i32,
     cmpgt_i32_slice,
     i32,
-    "`out[i] = all-1s if a[i]>b[i] else 0` (lane mask, not bool), best tier.",
-    lifted = cmpgt_i32_slice_lifted,
+    "`out[i] = all-1s if a[i]>b[i] else 0` (lane mask, not bool), best tier."
 );
 auto_binop_up!(
     cmplt_i32,
@@ -475,15 +420,13 @@ auto_binop_up!(
     add_u32,
     add_u32_slice,
     u32,
-    "`out[i] = a[i].wrapping_add(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = add_u32_slice_lifted,
+    "`out[i] = a[i].wrapping_add(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     sub_u32,
     sub_u32_slice,
     u32,
-    "`out[i] = a[i].wrapping_sub(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = sub_u32_slice_lifted,
+    "`out[i] = a[i].wrapping_sub(b[i])`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     div_u32,
@@ -495,8 +438,7 @@ auto_binop_up!(
     mul_u32,
     mul_u32_slice,
     u32,
-    "`out[i] = a[i].wrapping_mul(b[i])`, best tier (AVX-512F / AVX2 / SSE4.1 / scalar). SSE4.1 rung is a real probe, not ABI-baseline.",
-    lifted = mul_u32_slice_lifted,
+    "`out[i] = a[i].wrapping_mul(b[i])`, best tier (AVX-512F / AVX2 / SSE4.1 / scalar). SSE4.1 rung is a real probe, not ABI-baseline."
 );
 auto_binop_up!(
     min_u32,
@@ -514,36 +456,31 @@ auto_binop_up!(
     and_u32,
     and_u32_slice,
     u32,
-    "`out[i] = a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = and_u32_slice_lifted,
+    "`out[i] = a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     or_u32,
     or_u32_slice,
     u32,
-    "`out[i] = a[i] | b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = or_u32_slice_lifted,
+    "`out[i] = a[i] | b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     xor_u32,
     xor_u32_slice,
     u32,
-    "`out[i] = a[i] ^ b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = xor_u32_slice_lifted,
+    "`out[i] = a[i] ^ b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     andnot_u32,
     andnot_u32_slice,
     u32,
-    "`out[i] = !a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar).",
-    lifted = andnot_u32_slice_lifted,
+    "`out[i] = !a[i] & b[i]`, best tier (AVX-512F / AVX2 / SSE2 / scalar)."
 );
 auto_binop_up!(
     cmpeq_u32,
     cmpeq_u32_slice,
     u32,
-    "`out[i] = all-1s if a[i]==b[i] else 0` (lane mask, not bool), best tier.",
-    lifted = cmpeq_u32_slice_lifted,
+    "`out[i] = all-1s if a[i]==b[i] else 0` (lane mask, not bool), best tier."
 );
 auto_binop_up!(
     cmpgt_u32,
