@@ -295,3 +295,57 @@ pub(crate) fn sliding_scalar(signal: &[f32], taps: &[f32], out: &mut [f32], firs
         *o = acc;
     }
 }
+
+// ---------------------------------------------------------------- scalar paths
+//
+// The portable halves of the reductions, shared by `x86::reduce`,
+// `aarch64::reduce` and `riscv::auto`. Each SIMD body returns how many
+// elements it handled (`first`); these finish the rest. With `first = 0`
+// they are the whole portable path. Every one keeps the exact order of the
+// per-arch loops it replaced, so results are bit-identical to before.
+
+/// `out[i] = f32::from_bits((a[i] as u32) << 16)` for `i >= first`. Exact.
+#[inline]
+pub(crate) fn bf16_to_f32_scalar(a: &[u16], out: &mut [f32], first: usize) {
+    for i in first..a.len() {
+        out[i] = f32::from_bits((a[i] as u32) << 16);
+    }
+}
+
+/// `out[i] = exp_scalar(a[i])` for `i >= first`.
+#[inline]
+pub(crate) fn exp_f32_scalar(a: &[f32], out: &mut [f32], first: usize) {
+    for i in first..a.len() {
+        out[i] = exp_scalar(a[i]);
+    }
+}
+
+/// `out[i] = a * q[i] + b` (two roundings) for `i >= first`.
+#[inline]
+pub(crate) fn affine_u16_f32_scalar(q: &[u16], a: f32, b: f32, out: &mut [f32], first: usize) {
+    for i in first..q.len() {
+        out[i] = a * (q[i] as f32) + b;
+    }
+}
+
+/// Sum of `a` in four lane sums, lane = position **within `a`**, combined as
+/// `(l0 + l1) + (l2 + l3)`. Callers pass the unhandled tail `&a[done..]`.
+#[inline]
+pub(crate) fn sum4(a: &[f32]) -> f32 {
+    let mut lanes = [0f32; 4];
+    for (i, &x) in a.iter().enumerate() {
+        lanes[i % 4] += x;
+    }
+    (lanes[0] + lanes[1]) + (lanes[2] + lanes[3])
+}
+
+/// `sum(a[i] * b[i])` for `i >= first` in four lane sums, lane = **absolute**
+/// index `i % 4`, combined as `(l0 + l1) + (l2 + l3)`.
+#[inline]
+pub(crate) fn dot4(a: &[f32], b: &[f32], first: usize) -> f32 {
+    let mut lanes = [0f32; 4];
+    for i in first..a.len() {
+        lanes[i % 4] += a[i] * b[i];
+    }
+    (lanes[0] + lanes[1]) + (lanes[2] + lanes[3])
+}

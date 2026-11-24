@@ -92,11 +92,7 @@ pub fn reduce_sum_f32(a: &[f32]) -> f32 {
     if let Some(t) = rvv() {
         return t.reduce_sum_f32(a);
     }
-    let mut lanes = [0f32; 4];
-    for (i, &x) in a.iter().enumerate() {
-        lanes[i % 4] += x;
-    }
-    (lanes[0] + lanes[1]) + (lanes[2] + lanes[3])
+    crate::reduce_common::sum4(a)
 }
 
 /// Largest element, NaN ignored; `-inf` if there is none.
@@ -184,9 +180,7 @@ pub fn bf16_to_f32(a: &[u16], out: &mut [f32]) {
         return t.cvt_bf16_to_f32_slice(a, out);
     }
     assert_eq!(a.len(), out.len());
-    for i in 0..a.len() {
-        out[i] = f32::from_bits((a[i] as u32) << 16);
-    }
+    crate::reduce_common::bf16_to_f32_scalar(a, out, 0);
 }
 
 /// `out[i] = exp(a[i])`, an approximation (relative error <= 3e-7, see
@@ -199,9 +193,7 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
         return t.exp_f32(a, out);
     }
     assert_eq!(a.len(), out.len());
-    for i in 0..a.len() {
-        out[i] = crate::reduce_common::exp_scalar(a[i]);
-    }
+    crate::reduce_common::exp_f32_scalar(a, out, 0);
 }
 
 /// `out[i] = a * q[i] + b` with `q[i]` an unsigned 16-bit integer, two
@@ -214,9 +206,7 @@ pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
         return t.affine_u16_f32(q, a, b, out);
     }
     assert_eq!(q.len(), out.len());
-    for i in 0..q.len() {
-        out[i] = a * (q[i] as f32) + b;
-    }
+    crate::reduce_common::affine_u16_f32_scalar(q, a, b, out, 0);
 }
 
 /// Dot product `sum(a[i] * b[i])`. RVV fuses per lane and adds the lanes
@@ -230,11 +220,7 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
         return t.dot_f32(a, b);
     }
     assert_eq!(a.len(), b.len());
-    let mut lanes = [0f32; 4];
-    for i in 0..a.len() {
-        lanes[i % 4] += a[i] * b[i];
-    }
-    (lanes[0] + lanes[1]) + (lanes[2] + lanes[3])
+    crate::reduce_common::dot4(a, b, 0)
 }
 
 /// `ln(sum(exp(a[i])))` without overflow, same contract as

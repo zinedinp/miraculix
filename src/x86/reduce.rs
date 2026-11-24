@@ -144,9 +144,7 @@ pub fn bf16_to_f32_with(tier: Tier, a: &[u16], out: &mut [f32]) {
         TierKind::Avx | TierKind::Sse2 => unsafe { bf16_sse2(a, out) },
         TierKind::Scalar => 0,
     };
-    for i in done..a.len() {
-        out[i] = f32::from_bits((a[i] as u32) << 16);
-    }
+    crate::reduce_common::bf16_to_f32_scalar(a, out, done);
 }
 
 #[target_feature(enable = "avx512f")]
@@ -222,11 +220,7 @@ pub fn reduce_sum_f32_with(tier: Tier, a: &[f32]) -> f32 {
         TierKind::Sse2 => unsafe { sum_sse2(a) },
         TierKind::Scalar => (0.0, 0),
     };
-    let mut lanes = [0f32; 4];
-    for (i, &x) in a[done..].iter().enumerate() {
-        lanes[i % 4] += x;
-    }
-    s += (lanes[0] + lanes[1]) + (lanes[2] + lanes[3]);
+    s += crate::reduce_common::sum4(&a[done..]);
     s
 }
 
@@ -524,7 +518,7 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
     exp_f32_with(best_tier(), a, out)
 }
 
-use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P, exp_scalar};
+use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P};
 
 /// [`exp_f32`] with a [`Tier`] resolved once (see [`best_tier`]).
 pub fn exp_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
@@ -536,9 +530,7 @@ pub fn exp_f32_with(tier: Tier, a: &[f32], out: &mut [f32]) {
         TierKind::Avx | TierKind::Avx2 | TierKind::Sse2 => unsafe { exp_sse2(a, out) },
         TierKind::Scalar => 0,
     };
-    for i in done..a.len() {
-        out[i] = exp_scalar(a[i]);
-    }
+    crate::reduce_common::exp_f32_scalar(a, out, done);
 }
 
 #[target_feature(enable = "avx512f")]
@@ -702,9 +694,7 @@ pub fn affine_u16_f32_with(tier: Tier, q: &[u16], a: f32, b: f32, out: &mut [f32
         TierKind::Avx | TierKind::Sse2 => unsafe { affine_sse2(q, a, b, out) },
         TierKind::Scalar => 0,
     };
-    for i in done..q.len() {
-        out[i] = a * (q[i] as f32) + b;
-    }
+    crate::reduce_common::affine_u16_f32_scalar(q, a, b, out, done);
 }
 
 #[target_feature(enable = "avx512f")]
@@ -797,11 +787,7 @@ pub fn dot_f32_with(tier: Tier, a: &[f32], b: &[f32]) -> f32 {
         TierKind::Sse2 => unsafe { dot_sse2(a, b) },
         TierKind::Scalar => (0.0, 0),
     };
-    let mut lanes = [0f32; 4];
-    for i in done..a.len() {
-        lanes[i % 4] += a[i] * b[i];
-    }
-    s += (lanes[0] + lanes[1]) + (lanes[2] + lanes[3]);
+    s += crate::reduce_common::dot4(a, b, done);
     s
 }
 

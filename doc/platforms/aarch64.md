@@ -38,8 +38,10 @@ Covers, for every integer width and `f32`/`f64`:
 Several of these differ from the x86 ops of the same name (`andnot`,
 `select`, `shl`). See [cross-architecture differences](../cross-arch-semantics.md).
 
-**SVE vs Neon:** `auto_up` takes the SVE rung whenever SVE is present. On
-cores with 128-bit SVE (Neoverse N2/V2, Graviton4, recent Cortex-A) SVE is
+**SVE vs Neon:** `auto_up` takes the SVE rung whenever SVE is present. A
+128-bit SVE length is normal (Neoverse N2/V2, Grace, Graviton4, recent
+Cortex-A) and fully supported: every SVE op is `whilelo`-predicated, so it is
+exact at any length, and no code assumes a particular one. At 128 bits SVE is
 no wider than Neon and can be slightly slower. When you pick a path by hand,
 use `SveVl256::detect()` to take SVE only where it is actually wider.
 
@@ -59,7 +61,7 @@ the portable path.
 | Crypto | `Aes`, `Pmull`, `Sha` (SHA1 + SHA2), `Sha3`, `Sha512`, `Sm3`, `Sm4` |
 | Other | `Crc32`, `Rng` |
 | SVE | `Sve`, `Sve2`, `Sve2Aes`, `Sve2Pmull`, `Sve2Bitperm`, `SveBf16`, `SveI8mm`, `SveF32mm`, `SveF64mm` |
-| SVE width | `SveVl128`, `SveVl256`, `SveVl512`: prove SVE **and** at least that vector length. `Sve::vector_bits()` reads the length (cached) |
+| SVE width | `SveVl128`, `SveVl256`, `SveVl512`: prove SVE **and** at least that vector length. `Sve::vector_bits()` reads the calling thread's length (`cntb`, not cached: Linux sets it per thread) |
 
 There are no kernel macros for Arm yet; token methods are called directly.
 

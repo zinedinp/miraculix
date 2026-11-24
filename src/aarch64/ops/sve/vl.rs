@@ -12,15 +12,13 @@
 //! Linux can change VL later (`prctl(PR_SVE_SET_VL)`). The result stays
 //! right. Only the single-iteration promise lapses.
 //!
-//! The VL is read once with `cntb` (bytes per vector; no OS call, works on
-//! every OS) and cached process-wide.
+//! The VL is read with `cntb` (bytes per vector; one instruction, no OS
+//! call, works on every OS) on **every** call, never cached: Linux sets the
+//! VL per thread, so a process-wide cache could hand one thread another
+//! thread's length.
 
 use super::super::super::FeatureSet;
 use super::sve::Sve;
-use crate::level_cache::CachedU8;
-
-/// VL in 128-bit units (1..=16, SVE's architectural range 128..=2048 bits).
-static VL_QUADWORDS: CachedU8 = CachedU8::new();
 
 /// # Safety
 /// Caller proved `Feature::Sve`.
@@ -32,15 +30,19 @@ unsafe fn cntb() -> u64 {
 }
 
 impl Sve {
-    /// Hardware vector length in bits (128 to 2048, a multiple of 128), read
-    /// once with `cntb` and cached for the process.
+    /// The **calling thread's** vector length in bits (128 to 2048, a
+    /// multiple of 128), read with `cntb` each time.
+    ///
+    /// 128 is common (Neoverse N2/V2, Grace, Graviton4, Cortex-A710 and
+    /// later) and fully supported: every SVE op here is `whilelo`-predicated
+    /// and exact at any length. Linux can change the length per thread
+    /// (`prctl(PR_SVE_SET_VL)`), so size buffers from a fresh call on the
+    /// thread that uses them.
+    #[inline]
     pub fn vector_bits(self) -> usize {
-        let q = VL_QUADWORDS.get_or_init(|| {
-            // SAFETY: `self` proves SVE. `cntb` is at most 256 (2048 bits), so
-            // the quotient fits `u8` and never hits the cache's 0xFF sentinel.
-            (unsafe { cntb() } / 16) as u8
-        });
-        q as usize * 128
+        // SAFETY: `self` proves SVE.
+        let bytes = unsafe { cntb() } as usize;
+        bytes * 8
     }
 }
 
@@ -61,7 +63,7 @@ macro_rules! vl_token {
 
 			/// Build a token from a set you already have (e.g.
 			/// [`crate::aarch64::detect_features`]). Reads the vector length
-			/// (cached) only once `Feature::Sve` is confirmed.
+			/// (one `cntb`, on the calling thread) only once `Feature::Sve` is confirmed.
 			pub fn from_features(set: FeatureSet) -> Option<Self> {
 				let sve = Sve::from_features(set)?;
 				(sve.vector_bits() >= $bits).then_some($Token(()))

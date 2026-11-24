@@ -6,9 +6,8 @@
 /// `$lifted` is a closure `|proof: Avx| -> _`
 #[cfg(feature = "wider-bus-lift")]
 macro_rules! auto_down {
-    ($lifted:expr, $plain:expr) => {{
-        if let Some(proof) = crate::x86::ops::avx::avx::Avx::from_features(super::detect_features())
-        {
+    ($features:expr, $lifted:expr, $plain:expr) => {{
+        if let Some(proof) = crate::x86::ops::avx::avx::Avx::from_features($features) {
             return ($lifted)(proof);
         }
         return $plain;
@@ -16,7 +15,8 @@ macro_rules! auto_down {
 }
 #[cfg(not(feature = "wider-bus-lift"))]
 macro_rules! auto_down {
-    ($lifted:expr, $plain:expr) => {{
+    ($features:expr, $lifted:expr, $plain:expr) => {{
+        let _ = $features;
         return $plain;
     }};
 }
@@ -37,18 +37,27 @@ use super::ops::{
 /// 18 i32/u32 ops the wider-bus lift covers.
 macro_rules! auto_binop_down_baseline {
     ($fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty, lifted_bottom = $lifted_bottom:ident,) => {
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
             #[cfg(target_arch = "x86_64")]
             {
                 auto_down!(
+                    features,
                     |proof| Sse2::assume_baseline().$lifted_bottom(proof, a, b, out),
                     Sse2::assume_baseline().$slice_method(a, b, out)
                 );
             }
             #[cfg(not(target_arch = "x86_64"))]
             {
-                if let Some(t) = Sse2::from_features(super::detect_features()) {
+                if let Some(t) = Sse2::from_features(features) {
                     auto_down!(
+                        features,
                         |proof| t.$lifted_bottom(proof, a, b, out),
                         t.$slice_method(a, b, out)
                     );
@@ -66,14 +75,21 @@ macro_rules! auto_binop_down_baseline {
         }
     };
     ($fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty) => {
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
             #[cfg(target_arch = "x86_64")]
             {
                 Sse2::assume_baseline().$slice_method(a, b, out);
             }
             #[cfg(not(target_arch = "x86_64"))]
             {
-                if let Some(t) = Sse2::from_features(super::detect_features()) {
+                if let Some(t) = Sse2::from_features(features) {
                     return t.$slice_method(a, b, out);
                 }
                 $scalar_fn_name(a, b, out);
@@ -96,9 +112,17 @@ macro_rules! auto_binop_down_baseline {
 /// since (unlike the baseline family) it varies per op, not always `Sse2`.
 macro_rules! auto_binop_down_probed {
     ($Bottom:ty; $fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty, lifted_bottom = $lifted_bottom:ident,) => {
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
-            if let Some(t) = <$Bottom>::from_features(super::detect_features()) {
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
+            if let Some(t) = <$Bottom>::from_features(features) {
                 auto_down!(
+                    features,
                     |proof| t.$lifted_bottom(proof, a, b, out),
                     t.$slice_method(a, b, out)
                 );
@@ -114,8 +138,15 @@ macro_rules! auto_binop_down_probed {
         }
     };
     ($Bottom:ty; $fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty) => {
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
-            if let Some(t) = <$Bottom>::from_features(super::detect_features()) {
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
+            if let Some(t) = <$Bottom>::from_features(features) {
                 return t.$slice_method(a, b, out);
             }
             $scalar_fn_name(a, b, out)
@@ -134,8 +165,15 @@ macro_rules! auto_binop_down_probed {
 /// covers this) -> `Sse`/`Sse2` ABI-baseline -> scalar (non-x86_64: real probe).
 macro_rules! auto_f32f64_down {
     ($Bottom:ty; $fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty) => {
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
-            if let Some(t) = Avx::from_features(super::detect_features()) {
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
+            if let Some(t) = Avx::from_features(features) {
                 return t.$slice_method(a, b, out);
             }
             #[cfg(target_arch = "x86_64")]
@@ -144,7 +182,7 @@ macro_rules! auto_f32f64_down {
             }
             #[cfg(not(target_arch = "x86_64"))]
             {
-                if let Some(t) = <$Bottom>::from_features(super::detect_features()) {
+                if let Some(t) = <$Bottom>::from_features(features) {
                     return t.$slice_method(a, b, out);
                 }
                 $scalar_fn_name(a, b, out);
@@ -165,14 +203,20 @@ macro_rules! auto_f32f64_down {
 /// probe). Shared by both the `Avx512f`- and `Avx512Bw`-topped up-halves.
 macro_rules! auto_shift_imm_down {
     ($fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty) => {
-        pub(crate) fn $fn_name<const IMM: u32>(a: &[$Elem], out: &mut [$Elem]) {
+        pub(crate) fn $fn_name<const IMM: u32>(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
             #[cfg(target_arch = "x86_64")]
             {
                 Sse2::assume_baseline().$slice_method::<IMM>(a, out);
             }
             #[cfg(not(target_arch = "x86_64"))]
             {
-                if let Some(t) = Sse2::from_features(super::detect_features()) {
+                if let Some(t) = Sse2::from_features(features) {
                     return t.$slice_method::<IMM>(a, out);
                 }
                 $scalar_fn_name::<IMM>(a, out);
@@ -529,14 +573,21 @@ auto_shift_imm_down!(
 /// the elem widths where SSE2 natively has the op).
 macro_rules! auto_binop_down_bw_baseline {
     ($fn_name:ident, $slice_method:ident, $scalar_fn_name:ident, $scalar:expr, $Elem:ty) => {
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
             #[cfg(target_arch = "x86_64")]
             {
                 Sse2::assume_baseline().$slice_method(a, b, out);
             }
             #[cfg(not(target_arch = "x86_64"))]
             {
-                if let Some(t) = Sse2::from_features(super::detect_features()) {
+                if let Some(t) = Sse2::from_features(features) {
                     return t.$slice_method(a, b, out);
                 }
                 $scalar_fn_name(a, b, out);
@@ -565,28 +616,36 @@ fn max_i8_bw_scalar(a: &[i8], b: &[i8], out: &mut [i8]) {
         *o = x.max(y);
     }
 }
-pub(crate) fn min_i8(a: &[i8], b: &[i8], out: &mut [i8]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn min_i8(features: super::FeatureSet, a: &[i8], b: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.min_i8_slice(a, b, out);
     }
     min_i8_bw_scalar(a, b, out)
 }
-pub(crate) fn max_i8(a: &[i8], b: &[i8], out: &mut [i8]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn max_i8(features: super::FeatureSet, a: &[i8], b: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.max_i8_slice(a, b, out);
     }
     max_i8_bw_scalar(a, b, out)
 }
-pub(crate) fn min_u16(a: &[u16], b: &[u16], out: &mut [u16]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn min_u16(features: super::FeatureSet, a: &[u16], b: &[u16], out: &mut [u16]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.min_u16_slice(a, b, out);
     }
     for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
         *o = x.min(y);
     }
 }
-pub(crate) fn max_u16(a: &[u16], b: &[u16], out: &mut [u16]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn max_u16(features: super::FeatureSet, a: &[u16], b: &[u16], out: &mut [u16]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.max_u16_slice(a, b, out);
     }
     for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
@@ -965,80 +1024,160 @@ auto_shift_imm_down!(
     u16
 );
 
-pub(crate) fn select_i32(a: &[i32], b: &[i32], mask: &[i32], out: &mut [i32]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_i32(
+    features: super::FeatureSet,
+    a: &[i32],
+    b: &[i32],
+    mask: &[i32],
+    out: &mut [i32],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_i32_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_u32(a: &[u32], b: &[u32], mask: &[u32], out: &mut [u32]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_u32(
+    features: super::FeatureSet,
+    a: &[u32],
+    b: &[u32],
+    mask: &[u32],
+    out: &mut [u32],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_u32_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_f32(a: &[f32], b: &[f32], mask: &[f32], out: &mut [f32]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_f32(
+    features: super::FeatureSet,
+    a: &[f32],
+    b: &[f32],
+    mask: &[f32],
+    out: &mut [f32],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_f32_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m.is_sign_negative() { y } else { x };
     }
 }
-pub(crate) fn select_i64(a: &[i64], b: &[i64], mask: &[i64], out: &mut [i64]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_i64(
+    features: super::FeatureSet,
+    a: &[i64],
+    b: &[i64],
+    mask: &[i64],
+    out: &mut [i64],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_i64_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_u64(a: &[u64], b: &[u64], mask: &[u64], out: &mut [u64]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_u64(
+    features: super::FeatureSet,
+    a: &[u64],
+    b: &[u64],
+    mask: &[u64],
+    out: &mut [u64],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_u64_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_f64(a: &[f64], b: &[f64], mask: &[f64], out: &mut [f64]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_f64(
+    features: super::FeatureSet,
+    a: &[f64],
+    b: &[f64],
+    mask: &[f64],
+    out: &mut [f64],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_f64_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m.is_sign_negative() { y } else { x };
     }
 }
-pub(crate) fn select_i8(a: &[i8], b: &[i8], mask: &[i8], out: &mut [i8]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_i8(
+    features: super::FeatureSet,
+    a: &[i8],
+    b: &[i8],
+    mask: &[i8],
+    out: &mut [i8],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_i8_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_u8(a: &[u8], b: &[u8], mask: &[u8], out: &mut [u8]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_u8(
+    features: super::FeatureSet,
+    a: &[u8],
+    b: &[u8],
+    mask: &[u8],
+    out: &mut [u8],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_u8_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_i16(a: &[i16], b: &[i16], mask: &[i16], out: &mut [i16]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_i16(
+    features: super::FeatureSet,
+    a: &[i16],
+    b: &[i16],
+    mask: &[i16],
+    out: &mut [i16],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_i16_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
         *o = if m != 0 { y } else { x };
     }
 }
-pub(crate) fn select_u16(a: &[u16], b: &[u16], mask: &[u16], out: &mut [u16]) {
-    if let Some(t) = Sse41::from_features(super::detect_features()) {
+pub(crate) fn select_u16(
+    features: super::FeatureSet,
+    a: &[u16],
+    b: &[u16],
+    mask: &[u16],
+    out: &mut [u16],
+) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse41::from_features(features) {
         return t.select_u16_slice(a, b, mask, out);
     }
     for (((&x, &y), &m), o) in a.iter().zip(b).zip(mask).zip(out.iter_mut()) {
@@ -1046,32 +1185,40 @@ pub(crate) fn select_u16(a: &[u16], b: &[u16], mask: &[u16], out: &mut [u16]) {
     }
 }
 
-pub(crate) fn min_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
-    if let Some(t) = Sse42::from_features(super::detect_features()) {
+pub(crate) fn min_i64(features: super::FeatureSet, a: &[i64], b: &[i64], out: &mut [i64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse42::from_features(features) {
         return t.min_i64_slice(a, b, out);
     }
     for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
         *o = x.min(y);
     }
 }
-pub(crate) fn max_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
-    if let Some(t) = Sse42::from_features(super::detect_features()) {
+pub(crate) fn max_i64(features: super::FeatureSet, a: &[i64], b: &[i64], out: &mut [i64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse42::from_features(features) {
         return t.max_i64_slice(a, b, out);
     }
     for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
         *o = x.max(y);
     }
 }
-pub(crate) fn min_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
-    if let Some(t) = Sse42::from_features(super::detect_features()) {
+pub(crate) fn min_u64(features: super::FeatureSet, a: &[u64], b: &[u64], out: &mut [u64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse42::from_features(features) {
         return t.min_u64_slice(a, b, out);
     }
     for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
         *o = x.min(y);
     }
 }
-pub(crate) fn max_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
-    if let Some(t) = Sse42::from_features(super::detect_features()) {
+pub(crate) fn max_u64(features: super::FeatureSet, a: &[u64], b: &[u64], out: &mut [u64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Sse42::from_features(features) {
         return t.max_u64_slice(a, b, out);
     }
     for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
@@ -1079,14 +1226,16 @@ pub(crate) fn max_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
     }
 }
 
-pub(crate) fn mullo_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
+pub(crate) fn mullo_i64(features: super::FeatureSet, a: &[i64], b: &[i64], out: &mut [i64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().mullo_i64_slice(a, b, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.mullo_i64_slice(a, b, out);
         }
         for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
@@ -1094,14 +1243,16 @@ pub(crate) fn mullo_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
         }
     }
 }
-pub(crate) fn mullo_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
+pub(crate) fn mullo_u64(features: super::FeatureSet, a: &[u64], b: &[u64], out: &mut [u64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().mullo_u64_slice(a, b, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.mullo_u64_slice(a, b, out);
         }
         for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
@@ -1110,22 +1261,26 @@ pub(crate) fn mullo_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
     }
 }
 
-pub(crate) fn abs_i32(a: &[i32], out: &mut [i32]) {
-    if let Some(t) = Ssse3::from_features(super::detect_features()) {
+pub(crate) fn abs_i32(features: super::FeatureSet, a: &[i32], out: &mut [i32]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Ssse3::from_features(features) {
         return t.abs_i32_slice(a, out);
     }
     for (&x, o) in a.iter().zip(out.iter_mut()) {
         *o = x.wrapping_abs();
     }
 }
-pub(crate) fn abs_i64(a: &[i64], out: &mut [i64]) {
+pub(crate) fn abs_i64(features: super::FeatureSet, a: &[i64], out: &mut [i64]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().abs_i64_slice(a, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.abs_i64_slice(a, out);
         }
         for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1133,16 +1288,20 @@ pub(crate) fn abs_i64(a: &[i64], out: &mut [i64]) {
         }
     }
 }
-pub(crate) fn abs_i8(a: &[i8], out: &mut [i8]) {
-    if let Some(t) = Ssse3::from_features(super::detect_features()) {
+pub(crate) fn abs_i8(features: super::FeatureSet, a: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Ssse3::from_features(features) {
         return t.abs_i8_slice(a, out);
     }
     for (&x, o) in a.iter().zip(out.iter_mut()) {
         *o = x.wrapping_abs();
     }
 }
-pub(crate) fn abs_i16(a: &[i16], out: &mut [i16]) {
-    if let Some(t) = Ssse3::from_features(super::detect_features()) {
+pub(crate) fn abs_i16(features: super::FeatureSet, a: &[i16], out: &mut [i16]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
+    if let Some(t) = Ssse3::from_features(features) {
         return t.abs_i16_slice(a, out);
     }
     for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1150,14 +1309,16 @@ pub(crate) fn abs_i16(a: &[i16], out: &mut [i16]) {
     }
 }
 
-pub(crate) fn mul_i8(a: &[i8], b: &[i8], out: &mut [i8]) {
+pub(crate) fn mul_i8(features: super::FeatureSet, a: &[i8], b: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().mul_i8_slice(a, b, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.mul_i8_slice(a, b, out);
         }
         for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
@@ -1165,14 +1326,16 @@ pub(crate) fn mul_i8(a: &[i8], b: &[i8], out: &mut [i8]) {
         }
     }
 }
-pub(crate) fn mul_u8(a: &[u8], b: &[u8], out: &mut [u8]) {
+pub(crate) fn mul_u8(features: super::FeatureSet, a: &[u8], b: &[u8], out: &mut [u8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().mul_u8_slice(a, b, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.mul_u8_slice(a, b, out);
         }
         for ((&x, &y), o) in a.iter().zip(b).zip(out.iter_mut()) {
@@ -1180,14 +1343,16 @@ pub(crate) fn mul_u8(a: &[u8], b: &[u8], out: &mut [u8]) {
         }
     }
 }
-pub(crate) fn shl_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
+pub(crate) fn shl_i8<const IMM: u32>(features: super::FeatureSet, a: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().shl_i8_slice::<IMM>(a, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.shl_i8_slice::<IMM>(a, out);
         }
         for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1195,14 +1360,16 @@ pub(crate) fn shl_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
         }
     }
 }
-pub(crate) fn shl_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
+pub(crate) fn shl_u8<const IMM: u32>(features: super::FeatureSet, a: &[u8], out: &mut [u8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().shl_u8_slice::<IMM>(a, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.shl_u8_slice::<IMM>(a, out);
         }
         for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1210,14 +1377,16 @@ pub(crate) fn shl_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
         }
     }
 }
-pub(crate) fn shr_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
+pub(crate) fn shr_i8<const IMM: u32>(features: super::FeatureSet, a: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().shr_i8_slice::<IMM>(a, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.shr_i8_slice::<IMM>(a, out);
         }
         for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1225,14 +1394,16 @@ pub(crate) fn shr_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
         }
     }
 }
-pub(crate) fn shr_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
+pub(crate) fn shr_u8<const IMM: u32>(features: super::FeatureSet, a: &[u8], out: &mut [u8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().shr_u8_slice::<IMM>(a, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.shr_u8_slice::<IMM>(a, out);
         }
         for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1240,14 +1411,16 @@ pub(crate) fn shr_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
         }
     }
 }
-pub(crate) fn sra_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
+pub(crate) fn sra_i8<const IMM: u32>(features: super::FeatureSet, a: &[i8], out: &mut [i8]) {
+    // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+    let _ = features;
     #[cfg(target_arch = "x86_64")]
     {
         Sse2::assume_baseline().sra_i8_slice::<IMM>(a, out);
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        if let Some(t) = Sse2::from_features(super::detect_features()) {
+        if let Some(t) = Sse2::from_features(features) {
             return t.sra_i8_slice::<IMM>(a, out);
         }
         for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -1311,8 +1484,16 @@ macro_rules! ternary_unfused {
             }
         }
 
-        pub(crate) fn $fn_name(a: &[$Elem], b: &[$Elem], c: &[$Elem], out: &mut [$Elem]) {
-            let features = super::detect_features();
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[$Elem],
+            b: &[$Elem],
+            c: &[$Elem],
+            out: &mut [$Elem],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
+            let features = features;
             // SAFETY: each kernel runs only on a CPU with its feature (SSE and
             // SSE2 are the x86_64 baseline); the caller checked the lengths.
             let done = if Avx::from_features(features).is_some() {
@@ -1518,8 +1699,16 @@ macro_rules! p4_unfused {
             }
         }
 
-        pub(crate) fn $fn_name(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
-            let features = super::detect_features();
+        pub(crate) fn $fn_name(
+            features: super::FeatureSet,
+            a: &[f32],
+            b: [&[f32]; 4],
+            c: [f32; 4],
+            out: &mut [f32],
+        ) {
+            // Not every cfg / rung needs the set (x86_64 has an SSE2 floor).
+            let _ = features;
+            let features = features;
             // SAFETY: as in `ternary_unfused`.
             let done = if Avx::from_features(features).is_some() {
                 unsafe { $avx_kernel(a, b, c, out) }

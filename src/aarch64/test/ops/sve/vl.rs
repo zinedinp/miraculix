@@ -32,7 +32,7 @@ fn vector_bits_is_a_legal_sve_length() {
     let Some(t) = Sve::detect() else { return };
     let bits = t.vector_bits();
     assert!((128..=2048).contains(&bits) && bits % 128 == 0, "VL {bits}");
-    assert_eq!(bits, t.vector_bits(), "cached VL must be stable");
+    assert_eq!(bits, t.vector_bits(), "VL must be stable on one thread");
 }
 
 #[test]

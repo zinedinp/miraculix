@@ -45,9 +45,8 @@
 /// into `$lifted`'s own scope
 #[cfg(feature = "wider-bus-lift")]
 macro_rules! auto_up {
-    ($lifted:expr, $plain:expr) => {{
-        if let Some(proof) =
-            crate::x86::ops::avx512::avx512vl::Avx512FVl::from_features(super::detect_features())
+    ($features:expr, $lifted:expr, $plain:expr) => {{
+        if let Some(proof) = crate::x86::ops::avx512::avx512vl::Avx512FVl::from_features($features)
         {
             return ($lifted)(proof);
         }
@@ -56,7 +55,8 @@ macro_rules! auto_up {
 }
 #[cfg(not(feature = "wider-bus-lift"))]
 macro_rules! auto_up {
-    ($lifted:expr, $plain:expr) => {{
+    ($features:expr, $lifted:expr, $plain:expr) => {{
+        let _ = $features;
         return $plain;
     }};
 }
@@ -94,11 +94,12 @@ macro_rules! auto_binop_up {
             }
             if let Some(t) = Avx2::from_features(features) {
                 auto_up!(
+                    features,
                     |proof| t.$lifted(proof, a, b, out),
                     t.$slice_method(a, b, out)
                 );
             }
-            super::auto_down::$fn_name(a, b, out)
+            super::auto_down::$fn_name(features, a, b, out)
         }
     };
     ($fn_name:ident, $slice_method:ident, $Elem:ty, $doc:literal) => {
@@ -117,7 +118,7 @@ macro_rules! auto_binop_up {
             if let Some(t) = Avx2::from_features(features) {
                 return t.$slice_method(a, b, out);
             }
-            super::auto_down::$fn_name(a, b, out)
+            super::auto_down::$fn_name(features, a, b, out)
         }
     };
 }
@@ -132,12 +133,13 @@ macro_rules! auto_f32f64_up {
         /// `a.len() != b.len() || out.len() != a.len()`.
         #[inline]
         pub fn $fn_name(a: &[$Elem], b: &[$Elem], out: &mut [$Elem]) {
+            let features = super::detect_features();
             assert_eq!(a.len(), b.len());
             assert_eq!(out.len(), a.len());
-            if let Some(t) = Avx512f::from_features(super::detect_features()) {
+            if let Some(t) = Avx512f::from_features(features) {
                 return t.$slice_method(a, b, out);
             }
-            super::auto_down::$fn_name(a, b, out)
+            super::auto_down::$fn_name(features, a, b, out)
         }
     };
 }
@@ -162,7 +164,7 @@ macro_rules! auto_binop_up_bw {
             if let Some(t) = Avx2::from_features(features) {
                 return t.$slice_method(a, b, out);
             }
-            super::auto_down::$fn_name(a, b, out)
+            super::auto_down::$fn_name(features, a, b, out)
         }
     };
 }
@@ -184,7 +186,7 @@ macro_rules! auto_shift_imm_up {
             if let Some(t) = Avx2::from_features(features) {
                 return t.$slice_method::<IMM>(a, out);
             }
-            super::auto_down::$fn_name::<IMM>(a, out)
+            super::auto_down::$fn_name::<IMM>(features, a, out)
         }
     };
 }
@@ -721,7 +723,7 @@ macro_rules! auto_shift_imm_up_bw {
             if let Some(t) = Avx2::from_features(features) {
                 return t.$slice_method::<IMM>(a, out);
             }
-            super::auto_down::$fn_name::<IMM>(a, out)
+            super::auto_down::$fn_name::<IMM>(features, a, out)
         }
     };
 }
@@ -1199,7 +1201,7 @@ pub fn select_i32(a: &[i32], b: &[i32], mask: &[i32], out: &mut [i32]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_i32_slice(a, b, mask, out);
     }
-    super::auto_down::select_i32(a, b, mask, out)
+    super::auto_down::select_i32(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (`u32` view). Same cascade as [`select_i32`].
@@ -1218,7 +1220,7 @@ pub fn select_u32(a: &[u32], b: &[u32], mask: &[u32], out: &mut [u32]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_u32_slice(a, b, mask, out);
     }
-    super::auto_down::select_u32(a, b, mask, out)
+    super::auto_down::select_u32(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i].is_sign_negative() { b[i] } else { a[i] }` (AVX-512F / AVX2 / [`super::ops::sse::sse41::Sse41`] / scalar).
@@ -1238,7 +1240,7 @@ pub fn select_f32(a: &[f32], b: &[f32], mask: &[f32], out: &mut [f32]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_f32_slice(a, b, mask, out);
     }
-    super::auto_down::select_f32(a, b, mask, out)
+    super::auto_down::select_f32(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (AVX-512F / AVX2 / [`super::ops::sse::sse41::Sse41`] / scalar).
@@ -1258,7 +1260,7 @@ pub fn select_i64(a: &[i64], b: &[i64], mask: &[i64], out: &mut [i64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_i64_slice(a, b, mask, out);
     }
-    super::auto_down::select_i64(a, b, mask, out)
+    super::auto_down::select_i64(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (`u64` view). Same cascade as [`select_i64`].
@@ -1277,7 +1279,7 @@ pub fn select_u64(a: &[u64], b: &[u64], mask: &[u64], out: &mut [u64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_u64_slice(a, b, mask, out);
     }
-    super::auto_down::select_u64(a, b, mask, out)
+    super::auto_down::select_u64(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i].is_sign_negative() { b[i] } else { a[i] }` (AVX-512F / AVX2 / [`super::ops::sse::sse41::Sse41`] / scalar).
@@ -1297,7 +1299,7 @@ pub fn select_f64(a: &[f64], b: &[f64], mask: &[f64], out: &mut [f64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_f64_slice(a, b, mask, out);
     }
-    super::auto_down::select_f64(a, b, mask, out)
+    super::auto_down::select_f64(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (AVX-512BW / AVX2 / [`super::ops::sse::sse41::Sse41`] / scalar).
@@ -1317,7 +1319,7 @@ pub fn select_i8(a: &[i8], b: &[i8], mask: &[i8], out: &mut [i8]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_i8_slice(a, b, mask, out);
     }
-    super::auto_down::select_i8(a, b, mask, out)
+    super::auto_down::select_i8(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (`u8` view). Same cascade as [`select_i8`].
@@ -1336,7 +1338,7 @@ pub fn select_u8(a: &[u8], b: &[u8], mask: &[u8], out: &mut [u8]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_u8_slice(a, b, mask, out);
     }
-    super::auto_down::select_u8(a, b, mask, out)
+    super::auto_down::select_u8(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (AVX-512BW / AVX2 / [`super::ops::sse::sse41::Sse41`] / scalar).
@@ -1356,7 +1358,7 @@ pub fn select_i16(a: &[i16], b: &[i16], mask: &[i16], out: &mut [i16]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_i16_slice(a, b, mask, out);
     }
-    super::auto_down::select_i16(a, b, mask, out)
+    super::auto_down::select_i16(features, a, b, mask, out)
 }
 
 /// `out[i] = if mask[i] != 0 { b[i] } else { a[i] }` (`u16` view). Same cascade as [`select_i16`].
@@ -1375,7 +1377,7 @@ pub fn select_u16(a: &[u16], b: &[u16], mask: &[u16], out: &mut [u16]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.select_u16_slice(a, b, mask, out);
     }
-    super::auto_down::select_u16(a, b, mask, out)
+    super::auto_down::select_u16(features, a, b, mask, out)
 }
 
 /// `out[i] = min(a[i], b[i])`. Best-tier cascade: AVX-512F -> AVX2 -> SSE4.2 -> scalar.
@@ -1393,7 +1395,7 @@ pub fn min_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.min_i64_slice(a, b, out);
     }
-    super::auto_down::min_i64(a, b, out)
+    super::auto_down::min_i64(features, a, b, out)
 }
 
 /// `out[i] = max(a[i], b[i])`: same cascade as [`min_i64`] (`max(a,b) = blendv(a, b, cmpgt(b,a))`).
@@ -1411,7 +1413,7 @@ pub fn max_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.max_i64_slice(a, b, out);
     }
-    super::auto_down::max_i64(a, b, out)
+    super::auto_down::max_i64(features, a, b, out)
 }
 
 /// `out[i] = min(a[i], b[i])` (`u64`). Same cascade as `min_i64`, with a sign-bit flip
@@ -1430,7 +1432,7 @@ pub fn min_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.min_u64_slice(a, b, out);
     }
-    super::auto_down::min_u64(a, b, out)
+    super::auto_down::min_u64(features, a, b, out)
 }
 
 /// `out[i] = max(a[i], b[i])` (`u64`): same cascade as [`min_u64`].
@@ -1448,7 +1450,7 @@ pub fn max_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.max_u64_slice(a, b, out);
     }
-    super::auto_down::max_u64(a, b, out)
+    super::auto_down::max_u64(features, a, b, out)
 }
 
 /// `out[i] = a[i].wrapping_mul(b[i])` (low 64 bits). Cascade: AVX-512DQ -> AVX2 -> SSE2 -> scalar.
@@ -1466,7 +1468,7 @@ pub fn mullo_i64(a: &[i64], b: &[i64], out: &mut [i64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.mullo_i64_slice(a, b, out);
     }
-    super::auto_down::mullo_i64(a, b, out)
+    super::auto_down::mullo_i64(features, a, b, out)
 }
 
 /// `out[i] = a[i].wrapping_mul(b[i])`, low 64 bits: AVX-512DQ -> AVX2 -> SSE2 -> scalar.
@@ -1485,7 +1487,7 @@ pub fn mullo_u64(a: &[u64], b: &[u64], out: &mut [u64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.mullo_u64_slice(a, b, out);
     }
-    super::auto_down::mullo_u64(a, b, out)
+    super::auto_down::mullo_u64(features, a, b, out)
 }
 
 /// `out[i] = a[i].wrapping_abs()`: best tier (AVX-512F / AVX2 / SSSE3 / scalar). SSSE3 is a real probe.
@@ -1502,7 +1504,7 @@ pub fn abs_i32(a: &[i32], out: &mut [i32]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.abs_i32_slice(a, out);
     }
-    super::auto_down::abs_i32(a, out)
+    super::auto_down::abs_i32(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_abs()`: AVX-512F (native `vpabsq`) -> AVX2 -> SSE2 (both
@@ -1522,7 +1524,7 @@ pub fn abs_i64(a: &[i64], out: &mut [i64]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.abs_i64_slice(a, out);
     }
-    super::auto_down::abs_i64(a, out)
+    super::auto_down::abs_i64(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_abs()`: best tier (AVX-512BW / AVX2 / SSSE3 / scalar). SSSE3 is a real probe.
@@ -1539,7 +1541,7 @@ pub fn abs_i8(a: &[i8], out: &mut [i8]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.abs_i8_slice(a, out);
     }
-    super::auto_down::abs_i8(a, out)
+    super::auto_down::abs_i8(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_abs()`: best tier (AVX-512BW / AVX2 / SSSE3 / scalar). SSSE3 is a real probe.
@@ -1556,7 +1558,7 @@ pub fn abs_i16(a: &[i16], out: &mut [i16]) {
     if let Some(t) = Avx2::from_features(features) {
         return t.abs_i16_slice(a, out);
     }
-    super::auto_down::abs_i16(a, out)
+    super::auto_down::abs_i16(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_mul(b[i])`: AVX2 -> SSE2, both composed (zero-extend,
@@ -1567,12 +1569,13 @@ pub fn abs_i16(a: &[i16], out: &mut [i16]) {
 /// `a.len() != b.len() || out.len() != a.len()`.
 #[inline]
 pub fn mul_i8(a: &[i8], b: &[i8], out: &mut [i8]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), b.len());
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.mul_i8_slice(a, b, out);
     }
-    super::auto_down::mul_i8(a, b, out)
+    super::auto_down::mul_i8(features, a, b, out)
 }
 
 /// `out[i] = a[i].wrapping_mul(b[i])`
@@ -1581,12 +1584,13 @@ pub fn mul_i8(a: &[i8], b: &[i8], out: &mut [i8]) {
 /// `a.len() != b.len() || out.len() != a.len()`.
 #[inline]
 pub fn mul_u8(a: &[u8], b: &[u8], out: &mut [u8]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), b.len());
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.mul_u8_slice(a, b, out);
     }
-    super::auto_down::mul_u8(a, b, out)
+    super::auto_down::mul_u8(features, a, b, out)
 }
 
 /// `out[i] = a[i].wrapping_shl(IMM)`: AVX2 -> SSE2, both composed (widen to
@@ -1597,11 +1601,12 @@ pub fn mul_u8(a: &[u8], b: &[u8], out: &mut [u8]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn shl_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.shl_i8_slice::<IMM>(a, out);
     }
-    super::auto_down::shl_i8::<IMM>(a, out)
+    super::auto_down::shl_i8::<IMM>(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_shl(IMM)`
@@ -1610,11 +1615,12 @@ pub fn shl_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn shl_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.shl_u8_slice::<IMM>(a, out);
     }
-    super::auto_down::shl_u8::<IMM>(a, out)
+    super::auto_down::shl_u8::<IMM>(features, a, out)
 }
 
 /// `out[i] = ((a[i] as u8) >> IMM) as i8`: a **logical** shift (zeros shift in,
@@ -1625,11 +1631,12 @@ pub fn shl_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn shr_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.shr_i8_slice::<IMM>(a, out);
     }
-    super::auto_down::shr_i8::<IMM>(a, out)
+    super::auto_down::shr_i8::<IMM>(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_shr(IMM)`
@@ -1638,11 +1645,12 @@ pub fn shr_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn shr_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.shr_u8_slice::<IMM>(a, out);
     }
-    super::auto_down::shr_u8::<IMM>(a, out)
+    super::auto_down::shr_u8::<IMM>(features, a, out)
 }
 
 /// `out[i] = a[i].wrapping_shr(IMM)` (arithmetic): AVX2 -> SSE2, both composed
@@ -1653,11 +1661,12 @@ pub fn shr_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn sra_i8<const IMM: u32>(a: &[i8], out: &mut [i8]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx2::from_features(super::detect_features()) {
+    if let Some(t) = Avx2::from_features(features) {
         return t.sra_i8_slice::<IMM>(a, out);
     }
-    super::auto_down::sra_i8::<IMM>(a, out)
+    super::auto_down::sra_i8::<IMM>(features, a, out)
 }
 
 /// `out[i] = a[i] << count[i]` (per-lane shift). Cascade: AVX-512F -> AVX2 -> scalar.
@@ -1716,9 +1725,10 @@ pub fn srlv_i64(a: &[i64], count: &[i64], out: &mut [i64]) {
 /// `a.len() != count.len() || out.len() != a.len()`.
 #[inline]
 pub fn srav_i64(a: &[i64], count: &[i64], out: &mut [i64]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), count.len());
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx512f::from_features(super::detect_features()) {
+    if let Some(t) = Avx512f::from_features(features) {
         return t.srav_i64_slice(a, count, out);
     }
     for ((&x, &c), o) in a.iter().zip(count).zip(out.iter_mut()) {
@@ -1902,7 +1912,7 @@ pub fn fmadd_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
         // FMA3 implies AVX; use 256-bit path.
         return t.fmadd_f32x8_slice(a, b, c, out);
     }
-    super::auto_down::fmadd_f32(a, b, c, out)
+    super::auto_down::fmadd_f32(features, a, b, c, out)
 }
 
 /// `out[i] = a[i] * b[i] + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -1921,7 +1931,7 @@ pub fn fmadd_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fmadd_f64x4_slice(a, b, c, out);
     }
-    super::auto_down::fmadd_f64(a, b, c, out)
+    super::auto_down::fmadd_f64(features, a, b, c, out)
 }
 
 /// `out[i] = a[i] * b[i] - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -1940,7 +1950,7 @@ pub fn fmsub_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fmsub_f32x8_slice(a, b, c, out);
     }
-    super::auto_down::fmsub_f32(a, b, c, out)
+    super::auto_down::fmsub_f32(features, a, b, c, out)
 }
 
 /// `out[i] = a[i] * b[i] - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -1959,7 +1969,7 @@ pub fn fmsub_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fmsub_f64x4_slice(a, b, c, out);
     }
-    super::auto_down::fmsub_f64(a, b, c, out)
+    super::auto_down::fmsub_f64(features, a, b, c, out)
 }
 
 /// `out[i] = -(a[i] * b[i]) + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -1978,7 +1988,7 @@ pub fn fnmadd_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmadd_f32x8_slice(a, b, c, out);
     }
-    super::auto_down::fnmadd_f32(a, b, c, out)
+    super::auto_down::fnmadd_f32(features, a, b, c, out)
 }
 
 /// `out[i] = -(a[i] * b[i]) + c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -1997,7 +2007,7 @@ pub fn fnmadd_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmadd_f64x4_slice(a, b, c, out);
     }
-    super::auto_down::fnmadd_f64(a, b, c, out)
+    super::auto_down::fnmadd_f64(features, a, b, c, out)
 }
 
 /// `out[i] = -(a[i] * b[i]) - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -2016,7 +2026,7 @@ pub fn fnmsub_f32(a: &[f32], b: &[f32], c: &[f32], out: &mut [f32]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmsub_f32x8_slice(a, b, c, out);
     }
-    super::auto_down::fnmsub_f32(a, b, c, out)
+    super::auto_down::fnmsub_f32(features, a, b, c, out)
 }
 
 /// `out[i] = -(a[i] * b[i]) - c[i]` (HW fused when FMA/AVX-512F; AVX or SSE below that, unfused). Scalar remainder is not fused.
@@ -2035,7 +2045,7 @@ pub fn fnmsub_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
     if let Some(t) = Fma::from_features(features) {
         return t.fnmsub_f64x4_slice(a, b, c, out);
     }
-    super::auto_down::fnmsub_f64(a, b, c, out)
+    super::auto_down::fnmsub_f64(features, a, b, c, out)
 }
 
 /// `out[i] = a[i] + sum_n(b[n][i] * c[n])`: Xeon-Phi-only AVX512_4FMAPS
@@ -2047,14 +2057,15 @@ pub fn fnmsub_f64(a: &[f64], b: &[f64], c: &[f64], out: &mut [f64]) {
 /// `a`/`out`/every `b[n]` length mismatch.
 #[inline]
 pub fn p4fmadd_f32(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
     for bn in &b {
         assert_eq!(bn.len(), a.len());
     }
-    if let Some(t) = Avx512f::from_features(super::detect_features()) {
+    if let Some(t) = Avx512f::from_features(features) {
         return t.p4fmadd_f32_slice(a, b, c, out);
     }
-    super::auto_down::p4fmadd_f32(a, b, c, out)
+    super::auto_down::p4fmadd_f32(features, a, b, c, out)
 }
 
 /// `out[i] = a[i] - sum_n(b[n][i] * c[n])`: Xeon-Phi-only AVX512_4FMAPS
@@ -2066,14 +2077,15 @@ pub fn p4fmadd_f32(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
 /// `a`/`out`/every `b[n]` length mismatch.
 #[inline]
 pub fn p4fnmadd_f32(a: &[f32], b: [&[f32]; 4], c: [f32; 4], out: &mut [f32]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
     for bn in &b {
         assert_eq!(bn.len(), a.len());
     }
-    if let Some(t) = Avx512f::from_features(super::detect_features()) {
+    if let Some(t) = Avx512f::from_features(features) {
         return t.p4fnmadd_f32_slice(a, b, c, out);
     }
-    super::auto_down::p4fnmadd_f32(a, b, c, out)
+    super::auto_down::p4fnmadd_f32(features, a, b, c, out)
 }
 
 // FP16: AVX512FP16 (512-bit) -> AVX512FP16+VL (128/256-bit) -> scalar via f32.
@@ -2244,10 +2256,11 @@ auto_fp16_ternop!(
 /// Length mismatch among `a`, `b`, `c`, `out`.
 #[inline]
 pub fn fmaddsub_f16(a: &[u16], b: &[u16], c: &[u16], out: &mut [u16]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), c.len());
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx512Fp16::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Fp16::from_features(features) {
         return t.fmaddsub_ph_u16_slice(a, b, c, out);
     }
     for (j, (((&x, &y), &z), o)) in a.iter().zip(b).zip(c).zip(out.iter_mut()).enumerate() {
@@ -2264,10 +2277,11 @@ pub fn fmaddsub_f16(a: &[u16], b: &[u16], c: &[u16], out: &mut [u16]) {
 /// Length mismatch among `a`, `b`, `c`, `out`.
 #[inline]
 pub fn fmsubadd_f16(a: &[u16], b: &[u16], c: &[u16], out: &mut [u16]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), c.len());
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx512Fp16::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Fp16::from_features(features) {
         return t.fmsubadd_ph_u16_slice(a, b, c, out);
     }
     for (j, (((&x, &y), &z), o)) in a.iter().zip(b).zip(c).zip(out.iter_mut()).enumerate() {
@@ -2366,8 +2380,9 @@ pub fn popcnt_u16(a: &[u16], out: &mut [u16]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn f16_to_f32(a: &[u16], out: &mut [f32]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = F16c::from_features(super::detect_features()) {
+    if let Some(t) = F16c::from_features(features) {
         return t.f16_to_f32_slice(a, out);
     }
     for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -2383,8 +2398,9 @@ pub fn f16_to_f32(a: &[u16], out: &mut [f32]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn f32_to_f16(a: &[f32], out: &mut [u16]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = F16c::from_features(super::detect_features()) {
+    if let Some(t) = F16c::from_features(features) {
         const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
         return t.f32_to_f16_slice::<ROUNDING>(a, out);
     }
@@ -2401,10 +2417,11 @@ pub fn f32_to_f16(a: &[f32], out: &mut [u16]) {
 /// `a.len() != b.len() || a.len() != 2*src.len() || out.len() != src.len()`.
 #[inline]
 pub fn dpbf16_ps_f32(src: &[f32], a: &[u16], b: &[u16], out: &mut [f32]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), 2 * src.len());
     assert_eq!(out.len(), src.len());
-    if let Some(t) = Avx512Bf16::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Bf16::from_features(features) {
         return t.dpbf16_ps_f32_slice(src, a, b, out);
     }
     for (j, o) in out.iter_mut().enumerate() {
@@ -2422,8 +2439,9 @@ pub fn dpbf16_ps_f32(src: &[f32], a: &[u16], b: &[u16], out: &mut [f32]) {
 /// `out.len() != a.len()`.
 #[inline]
 pub fn cvtneps_pbh_u16(a: &[f32], out: &mut [u16]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), a.len());
-    if let Some(t) = Avx512Bf16::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Bf16::from_features(features) {
         return t.cvtneps_pbh_u16_slice(a, out);
     }
     for (&x, o) in a.iter().zip(out.iter_mut()) {
@@ -2440,9 +2458,10 @@ pub fn cvtneps_pbh_u16(a: &[f32], out: &mut [u16]) {
 /// `a.len() != b.len() || out.len() != 2*a.len()`.
 #[inline]
 pub fn cvtne2ps_pbh_u16(a: &[f32], b: &[f32], out: &mut [u16]) {
+    let features = super::detect_features();
     assert_eq!(a.len(), b.len());
     assert_eq!(out.len(), 2 * a.len());
-    if let Some(t) = Avx512Bf16::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Bf16::from_features(features) {
         return t.cvtne2ps_pbh_u16_slice(a, b, out);
     }
     let n = a.len();
@@ -2608,11 +2627,12 @@ fn dpwssd_scalar(src: &[i32], a: &[i16], b: &[i16], out: &mut [i32], acc: fn(i32
 /// `out.len() != src.len()`, or any `a[n].len() != src.len() * 2`.
 #[inline]
 pub fn p4dpwssd_i32(src: &[i32], a: [&[i16]; 4], b: [i16; 8], out: &mut [i32]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), src.len());
     for an in &a {
         assert_eq!(an.len(), src.len() * 2);
     }
-    if let Some(t) = Avx512Vnni::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Vnni::from_features(features) {
         return t.p4dpwssd_i32_slice(src, a, b, out);
     }
     p4dpwssd_scalar(src, a, b, out, vnni_acc_wrapping);
@@ -2624,11 +2644,12 @@ pub fn p4dpwssd_i32(src: &[i32], a: [&[i16]; 4], b: [i16; 8], out: &mut [i32]) {
 /// Same as [`p4dpwssd_i32`].
 #[inline]
 pub fn p4dpwssds_i32(src: &[i32], a: [&[i16]; 4], b: [i16; 8], out: &mut [i32]) {
+    let features = super::detect_features();
     assert_eq!(out.len(), src.len());
     for an in &a {
         assert_eq!(an.len(), src.len() * 2);
     }
-    if let Some(t) = Avx512Vnni::from_features(super::detect_features()) {
+    if let Some(t) = Avx512Vnni::from_features(features) {
         return t.p4dpwssds_i32_slice(src, a, b, out);
     }
     p4dpwssd_scalar(src, a, b, out, vnni_acc_saturating);

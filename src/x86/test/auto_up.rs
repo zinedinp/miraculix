@@ -1437,10 +1437,10 @@ fn p4dpwssd_i32_panics_on_length_mismatch() {
     assert!(result.is_err());
 }
 
-type Ternary<T> = fn(&[T], &[T], &[T], &mut [T]);
+type Ternary<T> = fn(crate::x86::FeatureSet, &[T], &[T], &[T], &mut [T]);
 type TernaryKernel<T> = unsafe fn(&[T], &[T], &[T], &mut [T]) -> usize;
 type Scalar3<T> = fn(T, T, T) -> T;
-type P4 = fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]);
+type P4 = fn(crate::x86::FeatureSet, &[f32], [&[f32]; 4], [f32; 4], &mut [f32]);
 type P4Kernel = unsafe fn(&[f32], [&[f32]; 4], [f32; 4], &mut [f32]) -> usize;
 
 /// The rungs below `Fma` (AVX, SSE) round the product first, as the scalar
@@ -1466,7 +1466,7 @@ fn the_multiply_add_family_below_fma_matches_scalar() {
         ];
         for (n, ((down, scalar), kernels)) in ops.into_iter().zip(kernels).enumerate() {
             let mut out = vec![0.0; len];
-            down(&a, &b, &c, &mut out);
+            down(crate::x86::detect_features(), &a, &b, &c, &mut out);
             let want: Vec<f32> = (0..len).map(|i| scalar(a[i], b[i], c[i])).collect();
             assert_eq!(
                 out.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
@@ -1517,7 +1517,7 @@ fn the_multiply_add_family_below_fma_matches_scalar() {
                 );
             }
             let mut out = vec![0.0; len];
-            down(&a, &b, &c, &mut out);
+            down(crate::x86::detect_features(), &a, &b, &c, &mut out);
             assert_eq!(
                 out.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
                 want.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
@@ -1527,7 +1527,13 @@ fn the_multiply_add_family_below_fma_matches_scalar() {
     }
     // -(0 * 1) - 0 is -0, not +0.
     let mut out = [1.0f32; 9];
-    auto_down::fnmsub_f32(&[0.0; 9], &[1.0; 9], &[0.0; 9], &mut out);
+    auto_down::fnmsub_f32(
+        crate::x86::detect_features(),
+        &[0.0; 9],
+        &[1.0; 9],
+        &[0.0; 9],
+        &mut out,
+    );
     assert!(
         out.iter().all(|x| x.to_bits() == (-0.0f32).to_bits()),
         "{out:?}"
@@ -1559,7 +1565,7 @@ fn p4_multiply_add_below_avx512_matches_scalar() {
         for (sign, down, kernels) in rungs {
             let has = [cfg!(target_arch = "x86_64"), Avx::detect().is_some()];
             let mut outs = vec![vec![0.0f32; len]];
-            down(&a, b, c, &mut outs[0]);
+            down(crate::x86::detect_features(), &a, b, c, &mut outs[0]);
             for (rung, kernel) in kernels.into_iter().enumerate().filter(|&(r, _)| has[r]) {
                 let mut out = vec![0.0f32; len];
                 // SAFETY: the rung's feature is present (checked above).
