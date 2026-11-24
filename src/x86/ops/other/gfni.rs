@@ -2,7 +2,7 @@
 //! [`Gfni512`] (512, needs `"gfni,avx512f"`). `gf2p8mul` via [`simd_binop`]; affine forms hand-written.
 //! 128-bit affine requires `"avx"` (VEX form; legacy encoding needs 16-byte-aligned mem).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, __m512i, _mm_gf2p8affine_epi64_epi8, _mm_gf2p8affineinv_epi64_epi8,
     _mm_gf2p8mul_epi8, _mm_loadu_si128, _mm_storeu_si128, _mm256_gf2p8affine_epi64_epi8,
     _mm256_gf2p8affineinv_epi64_epi8, _mm256_gf2p8mul_epi8, _mm256_loadu_si256,

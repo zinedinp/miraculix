@@ -2,7 +2,7 @@
 //! Token: [`F16c::detect`] / [`F16c::from_level`]. Hand-written cross-type support.
 //! Scalar fallback uses rounded-to-nearest-even, and `auto_up` cascades to the scalar routine directly.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, _mm_cvtph_ps, _mm_cvtps_ph, _mm_loadu_si128, _mm_storeu_si128, _mm256_cvtph_ps,
     _mm256_cvtps_ph,
 };
@@ -111,7 +111,7 @@ unsafe fn cvtph2ps_x4(a: &[u16; 4]) -> [f32; 4] {
         let va: __m128i = _mm_loadu_si128(padded.as_ptr().cast());
         let vr = _mm_cvtph_ps(va);
         let mut out = [0f32; 4];
-        core::arch::x86_64::_mm_storeu_ps(out.as_mut_ptr(), vr);
+        crate::x86::arch::_mm_storeu_ps(out.as_mut_ptr(), vr);
         out
     }
 }
@@ -125,7 +125,7 @@ unsafe fn cvtph2ps_x8(a: &[u16; 8]) -> [f32; 8] {
         let va: __m128i = _mm_loadu_si128(a.as_ptr().cast());
         let vr = _mm256_cvtph_ps(va);
         let mut out = [0f32; 8];
-        core::arch::x86_64::_mm256_storeu_ps(out.as_mut_ptr(), vr);
+        crate::x86::arch::_mm256_storeu_ps(out.as_mut_ptr(), vr);
         out
     }
 }
@@ -136,7 +136,7 @@ unsafe fn cvtph2ps_x8(a: &[u16; 8]) -> [f32; 8] {
 #[target_feature(enable = "f16c")]
 unsafe fn cvtps2ph_x4<const ROUNDING: i32>(a: &[f32; 4]) -> [u16; 4] {
     unsafe {
-        let va = core::arch::x86_64::_mm_loadu_ps(a.as_ptr());
+        let va = crate::x86::arch::_mm_loadu_ps(a.as_ptr());
         let vr: __m128i = _mm_cvtps_ph::<ROUNDING>(va);
         let mut padded = [0u16; 8];
         _mm_storeu_si128(padded.as_mut_ptr().cast(), vr);
@@ -152,7 +152,7 @@ unsafe fn cvtps2ph_x4<const ROUNDING: i32>(a: &[f32; 4]) -> [u16; 4] {
 #[target_feature(enable = "f16c")]
 unsafe fn cvtps2ph_x8<const ROUNDING: i32>(a: &[f32; 8]) -> [u16; 8] {
     unsafe {
-        let va = core::arch::x86_64::_mm256_loadu_ps(a.as_ptr());
+        let va = crate::x86::arch::_mm256_loadu_ps(a.as_ptr());
         let vr: __m128i = _mm256_cvtps_ph::<ROUNDING>(va);
         let mut out = [0u16; 8];
         _mm_storeu_si128(out.as_mut_ptr().cast(), vr);

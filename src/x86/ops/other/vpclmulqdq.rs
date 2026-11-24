@@ -2,7 +2,7 @@
 //! Hand-written (const-generic imm). Tokens: [`Vpclmulqdq`], [`Vpclmulqdq512`] (needs `avx512f`).
 //! No 128-bit form (use [`super::pclmulqdq::Pclmulqdq`]).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m256i, __m512i, _mm256_clmulepi64_epi128, _mm256_loadu_si256, _mm256_storeu_si256,
     _mm512_clmulepi64_epi128, _mm512_loadu_si512, _mm512_storeu_si512,
 };

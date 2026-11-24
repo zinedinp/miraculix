@@ -2,7 +2,7 @@
 //! Token: [`Sha::detect`] (no auto/AVX dependency). Hand-written whole-block; Guide semantics.
 //! Array index 0 = bits `[31:0]`; verified against `hashlib` before transcription.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, _mm_loadu_si128, _mm_sha1msg1_epu32, _mm_sha1msg2_epu32, _mm_sha1nexte_epu32,
     _mm_sha1rnds4_epu32, _mm_sha256msg1_epu32, _mm_sha256msg2_epu32, _mm_sha256rnds2_epu32,
     _mm_storeu_si128,

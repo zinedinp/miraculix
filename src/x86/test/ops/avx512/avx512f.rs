@@ -1667,7 +1667,7 @@ fn f16_to_f32x16_converts_known_values() {
 fn f32_to_f16x16_converts_known_values() {
     let Some(t) = Avx512f::detect() else { return };
     let a: [f32; 16] = core::array::from_fn(|i| i as f32 + 1.0);
-    const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     let expect: [u16; 16] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 + 1.0));
     assert_eq!(t.f32_to_f16x16::<ROUNDING>(a), expect);
 }
@@ -1703,7 +1703,7 @@ fn f16_to_f32_slice_matches_scalar_for_various_lengths() {
 #[test]
 fn f32_to_f16_slice_matches_scalar_for_various_lengths() {
     let Some(t) = Avx512f::detect() else { return };
-    const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     for len in [0usize, 1, 3, 15, 16, 17, 33, 100] {
         let a: Vec<f32> = (0..len).map(|i| i as f32 - (len as f32 / 2.0)).collect();
         let mut out = vec![0u16; len];

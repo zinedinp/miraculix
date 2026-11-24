@@ -2,7 +2,7 @@
 //! `core::arch`. Token: [`Sse4a::detect`]. No reg-control forms; no
 //! non-temporal stores (side-effect, not compute-return).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     _mm_cvtsi64_si128, _mm_cvtsi128_si64, _mm_extracti_si64, _mm_inserti_si64,
 };
 

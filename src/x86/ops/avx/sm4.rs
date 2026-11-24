@@ -1,7 +1,7 @@
 //! SM4 (~2024 Sierra Forest/Granite Rapids): GB/T 32907-2016, 4-rounds key expand + encrypt (`"sm4"`).
 //! Token: [`Sm4::detect`] (no auto). Hand-written; 8 calls = full schedule/encrypt; 256-bit = 2x128 lanes.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, _mm_loadu_si128, _mm_sm4key4_epi32, _mm_sm4rnds4_epi32, _mm_storeu_si128,
     _mm256_loadu_si256, _mm256_sm4key4_epi32, _mm256_sm4rnds4_epi32, _mm256_storeu_si256,
 };

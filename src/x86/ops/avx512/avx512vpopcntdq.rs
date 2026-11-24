@@ -2,7 +2,7 @@
 //! Straight `simd_unop` plus masked forms. Not in V4 and no `from_level`.
 //! Top rung for `auto_up::popcnt_u32`/`popcnt_u64`. 128/256-bit VL forms live in `super::avx512vl`.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_loadu_si512, _mm512_mask_popcnt_epi32, _mm512_mask_popcnt_epi64,
     _mm512_maskz_popcnt_epi32, _mm512_maskz_popcnt_epi64, _mm512_popcnt_epi32, _mm512_popcnt_epi64,
     _mm512_storeu_si512,

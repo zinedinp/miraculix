@@ -1,7 +1,7 @@
 //! AVX-512BW: 512-bit byte/word ops over i8..u16. Token: `Avx512Bw`.
 //! Provides wide integer arithmetic, compares, blends, and masked ops.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m512i, _mm_loadu_si128, _mm512_abs_epi8, _mm512_abs_epi16, _mm512_add_epi8,
     _mm512_add_epi16, _mm512_adds_epi8, _mm512_adds_epi16, _mm512_adds_epu8, _mm512_adds_epu16,
     _mm512_avg_epu8, _mm512_avg_epu16, _mm512_broadcastb_epi8, _mm512_bslli_epi128,

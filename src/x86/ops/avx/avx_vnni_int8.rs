@@ -1,7 +1,7 @@
 //! AVX-VNNI-INT8: all-int8 dot-product-accumulate into `i32` (`avxvnniint8`).
 //! Token: [`AvxVnniInt8::detect`]. Same shape as `super::avx_vnni` (group = 4).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, _mm_dpbssd_epi32, _mm_dpbssds_epi32, _mm_dpbsud_epi32, _mm_dpbsuds_epi32,
     _mm_dpbuud_epi32, _mm_dpbuuds_epi32, _mm_loadu_si128, _mm_storeu_si128, _mm256_dpbssd_epi32,
     _mm256_dpbssds_epi32, _mm256_dpbsud_epi32, _mm256_dpbsuds_epi32, _mm256_dpbuud_epi32,

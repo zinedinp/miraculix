@@ -2,7 +2,7 @@
 //! (`Avx512Bw`/`Avx512Dq`) and 128/256-bit (`Avx512BwVl`/`Avx512DqVl`).
 //! See [`super`] for feature gating.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, __m512i, _mm_loadu_si128, _mm_movepi8_mask, _mm_movepi16_mask,
     _mm_movepi32_mask, _mm_movepi64_mask, _mm_movm_epi8, _mm_movm_epi16, _mm_movm_epi32,
     _mm_movm_epi64, _mm_storeu_si128, _mm256_loadu_si256, _mm256_movepi8_mask,

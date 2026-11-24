@@ -1,7 +1,7 @@
 //! AVX (2011): 256-bit YMM float ops (`"avx"`). Token: [`Avx::detect`] / [`Avx::from_level`].
 //! Supports f32/f64 arithmetic, bitwise, and compare masks; integer 256-bit is in [`super::avx2`].
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m256, __m256d, __m256i, _CMP_EQ_OQ, _CMP_GE_OQ, _CMP_GT_OQ, _CMP_LE_OQ, _CMP_LT_OQ,
     _mm256_add_pd, _mm256_add_ps, _mm256_addsub_pd, _mm256_addsub_ps, _mm256_and_pd, _mm256_and_ps,
     _mm256_andnot_pd, _mm256_andnot_ps, _mm256_castpd_si256, _mm256_castps_si256, _mm256_cmp_pd,

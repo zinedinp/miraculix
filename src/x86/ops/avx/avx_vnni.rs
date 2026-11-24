@@ -1,7 +1,7 @@
 //! AVX-VNNI: VEX narrow dot-product-accumulate into `i32` (`avxvnni`).
 //! Token: [`AvxVnni::detect`]. Hand-written cross-type implementations that cascade to scalar when higher rungs are absent.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, _mm_dpbusd_avx_epi32, _mm_dpbusds_avx_epi32, _mm_dpwssd_avx_epi32,
     _mm_dpwssds_avx_epi32, _mm_loadu_si128, _mm_storeu_si128, _mm256_dpbusd_avx_epi32,
     _mm256_dpbusds_avx_epi32, _mm256_dpwssd_avx_epi32, _mm256_dpwssds_avx_epi32,

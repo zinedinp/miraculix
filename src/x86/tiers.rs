@@ -129,10 +129,7 @@ impl Avx10 {
         if !Self::is_present(set) {
             return None;
         }
-        #[cfg(target_arch = "x86")]
-        use core::arch::x86::__cpuid_count;
-        #[cfg(target_arch = "x86_64")]
-        use core::arch::x86_64::__cpuid_count;
+        use crate::x86::arch::__cpuid_count;
 
         let leaf = __cpuid_count(0x24, 0);
         Some((leaf.ebx & 0xff) as u8)

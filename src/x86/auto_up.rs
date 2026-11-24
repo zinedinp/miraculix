@@ -2383,7 +2383,7 @@ pub fn f16_to_f32(a: &[u16], out: &mut [f32]) {
 pub fn f32_to_f16(a: &[f32], out: &mut [u16]) {
     assert_eq!(out.len(), a.len());
     if let Some(t) = F16c::from_features(super::detect_features()) {
-        const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+        const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
         return t.f32_to_f16_slice::<ROUNDING>(a, out);
     }
     for (&x, o) in a.iter().zip(out.iter_mut()) {

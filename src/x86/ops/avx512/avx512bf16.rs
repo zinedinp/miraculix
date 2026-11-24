@@ -2,7 +2,7 @@
 //! 512-bit forms require `avx512bf16` + `avx512f`. 128/256-bit VL forms are not built here.
 //! Merge/zero-masked versions exist for every op.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m256bh, __m256i, __m512, __m512bh, __m512i, _mm256_loadu_si256, _mm512_cvtne2ps_pbh,
     _mm512_cvtneps_pbh, _mm512_cvtpbh_ps, _mm512_dpbf16_ps, _mm512_loadu_ps, _mm512_loadu_si512,
     _mm512_mask_cvtne2ps_pbh, _mm512_mask_cvtneps_pbh, _mm512_mask_cvtpbh_ps,

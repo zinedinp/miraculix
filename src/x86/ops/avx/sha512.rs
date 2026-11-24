@@ -2,7 +2,7 @@
 //! Distinct from `Feature::Sha` (SHA-1/256 NI). Token: [`Sha512::detect`] (no auto).
 //! Hand-written whole-block; between msg1/msg2 callers add aligned `W[t-7..t-4]`.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, _mm_loadu_si128, _mm256_loadu_si256, _mm256_sha512msg1_epi64,
     _mm256_sha512msg2_epi64, _mm256_sha512rnds2_epi64, _mm256_storeu_si256,
 };

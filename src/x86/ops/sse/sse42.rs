@@ -1,7 +1,7 @@
 //! SSE4.2: CRC32-C and improved integer compare/min/max support. Token: [`Sse42::detect`].
 //! Provides `crc32_u8/u16/u32/u64` and native 64-bit compare ops.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, _mm_blendv_epi8, _mm_cmpgt_epi64, _mm_crc32_u8, _mm_crc32_u16, _mm_crc32_u32,
     _mm_crc32_u64, _mm_loadu_si128, _mm_set1_epi64x, _mm_storeu_si128, _mm_xor_si128,
 };

@@ -2,7 +2,7 @@
 //! Wide int add/sub/bit/cmp/shift, f64/bitwise; i64/u64 mullo schoolbook below AVX-512DQ; sat/avg on narrow ints.
 //! Composed `mul_i8/u8` and byte `shl/shr/sra` (no native 8-bit mul/shift). `sqrt_f64x2` fixed-width only.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128d, __m128i, _mm_add_epi8, _mm_add_epi16, _mm_add_epi32, _mm_add_epi64, _mm_add_pd,
     _mm_adds_epi8, _mm_adds_epi16, _mm_adds_epu8, _mm_adds_epu16, _mm_and_pd, _mm_and_si128,
     _mm_andnot_pd, _mm_andnot_si128, _mm_avg_epu8, _mm_avg_epu16, _mm_cmpeq_epi8, _mm_cmpeq_epi16,

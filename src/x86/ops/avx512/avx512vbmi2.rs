@@ -2,7 +2,7 @@
 //! compress/expand for 8/16-bit lanes. Token: [`Avx512Vbmi2`] (`"avx512vbmi2"`).
 //! VL forms: `super::avx512vl`. Pointer `compressstoreu`/`expandloadu` deferred.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_loadu_si512, _mm512_mask_compress_epi8, _mm512_mask_compress_epi16,
     _mm512_mask_compressstoreu_epi8, _mm512_mask_compressstoreu_epi16, _mm512_mask_expand_epi8,
     _mm512_mask_expand_epi16, _mm512_mask_expandloadu_epi8, _mm512_mask_expandloadu_epi16,

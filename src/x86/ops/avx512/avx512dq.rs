@@ -3,7 +3,7 @@
 //! 128/256-bit companions live in `avx512vl`. `fpclass` has a k1-gated form
 //! instead of merge/zero (see comment above `fpclass_f64x8_gated`).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128,
     __m128d,
     __m128i,

@@ -3,7 +3,7 @@
 //! 128-bit lane min/max uses `cmpgt`+blend; 64x64->64 mullo is schoolbook below AVX-512DQ.
 //! `mul_i8/u8` and byte-granular `shl/shr/sra_i8/u8` are composed (no native 8-bit multiply/shift on x86 at any tier).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256, __m256d, __m256i, _mm_alignr_epi8, _mm_cvtsi32_si128, _mm_loadu_si128,
     _mm_setzero_si128, _mm_storeu_si128, _mm256_abs_epi8, _mm256_abs_epi16, _mm256_abs_epi32,
     _mm256_add_epi8, _mm256_add_epi16, _mm256_add_epi32, _mm256_add_epi64, _mm256_adds_epi8,

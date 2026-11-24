@@ -2,8 +2,8 @@
 //! Stable `core::arch`. Token: [`Aes::detect`]. Hand-written (not per-lane).
 //! Tests: AES-128 schedule + encrypt/decrypt vs FIPS-197 Appendix B.
 
-use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
-use core::arch::x86_64::{
+use crate::x86::arch::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
+use crate::x86::arch::{
     _mm_aesdec_si128, _mm_aesdeclast_si128, _mm_aesenc_si128, _mm_aesenclast_si128,
     _mm_aesimc_si128, _mm_aeskeygenassist_si128,
 };

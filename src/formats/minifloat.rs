@@ -403,7 +403,7 @@ impl MiniFloat {
         if overflow == Overflow::Special {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             if let Some(t) = crate::x86::ops::avx::f16c::F16c::detect() {
-                t.f32_to_f16_slice::<{ core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT }>(src, dst);
+                t.f32_to_f16_slice::<{ crate::x86::arch::_MM_FROUND_TO_NEAREST_INT }>(src, dst);
                 return;
             }
             #[cfg(target_arch = "aarch64")]

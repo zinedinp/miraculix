@@ -12,7 +12,7 @@
 //! results. Put the lanes back in order with [`Avx2::permute2x128_i64x4`] or
 //! [`Avx512f::permutex2var_u64x8`].
 
-use core::arch::x86_64::*;
+use crate::x86::arch::*;
 
 use super::avx::avx::Avx;
 use super::avx::avx2::Avx2;

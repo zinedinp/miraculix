@@ -2,7 +2,7 @@
 //! Token: [`Popcnt::detect`]. Used by `auto` under AVX512VPOPCNTDQ and AVX512BITALG.
 //! Only 32/64-bit GPR forms are wrapped.
 
-use core::arch::x86_64::{_popcnt32, _popcnt64};
+use crate::x86::arch::{_popcnt32, _popcnt64};
 
 use super::super::super::{Feature, FeatureSet};
 

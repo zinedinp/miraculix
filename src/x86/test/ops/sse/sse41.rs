@@ -284,7 +284,7 @@ slice_binop_matches_scalar_test!(
 #[test]
 fn round_f32x4_rounds_to_nearest_int() {
     let Some(sse41) = Sse41::detect() else { return };
-    use core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    use crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     let a = [1.5f32, 2.5, -1.5, 0.4];
     assert_eq!(
         sse41.round_f32x4::<_MM_FROUND_TO_NEAREST_INT>(a),
@@ -295,7 +295,7 @@ fn round_f32x4_rounds_to_nearest_int() {
 #[test]
 fn round_f32x4_truncates_toward_zero() {
     let Some(sse41) = Sse41::detect() else { return };
-    use core::arch::x86_64::_MM_FROUND_TO_ZERO;
+    use crate::x86::arch::_MM_FROUND_TO_ZERO;
     let a = [1.9f32, 2.1, -1.9, -2.1];
     assert_eq!(
         sse41.round_f32x4::<_MM_FROUND_TO_ZERO>(a),
@@ -306,7 +306,7 @@ fn round_f32x4_truncates_toward_zero() {
 #[test]
 fn round_f64x2_rounds_up_to_pos_inf() {
     let Some(sse41) = Sse41::detect() else { return };
-    use core::arch::x86_64::_MM_FROUND_TO_POS_INF;
+    use crate::x86::arch::_MM_FROUND_TO_POS_INF;
     let a = [1.1f64, -1.1];
     assert_eq!(sse41.round_f64x2::<_MM_FROUND_TO_POS_INF>(a), [2.0, -1.0]);
 }

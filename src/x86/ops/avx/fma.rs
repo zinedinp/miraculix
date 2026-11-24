@@ -1,7 +1,7 @@
 //! FMA3: fused f32/f64 fmadd/fmsub/fnmadd/fnmsub at 128/256-bit (`"fma"`). Token: [`Fma`].
 //! AVX-512 FMA lives under `super::super::avx512`.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128, __m128d, __m256, __m256d, _mm_fmadd_pd, _mm_fmadd_ps, _mm_fmsub_pd, _mm_fmsub_ps,
     _mm_fnmadd_pd, _mm_fnmadd_ps, _mm_fnmsub_pd, _mm_fnmsub_ps, _mm_loadu_pd, _mm_loadu_ps,
     _mm_storeu_pd, _mm_storeu_ps, _mm256_fmadd_pd, _mm256_fmadd_ps, _mm256_fmsub_pd,

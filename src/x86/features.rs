@@ -208,10 +208,7 @@ impl CpuidLeaves {
     }
 
     fn read_sha_sm_leaf() -> u32 {
-        #[cfg(target_arch = "x86")]
-        use core::arch::x86::__cpuid_count;
-        #[cfg(target_arch = "x86_64")]
-        use core::arch::x86_64::__cpuid_count;
+        use crate::x86::arch::__cpuid_count;
 
         __cpuid_count(7, 1).eax
     }

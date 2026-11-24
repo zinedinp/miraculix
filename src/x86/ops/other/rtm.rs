@@ -1,7 +1,7 @@
 //! RTM (TSX, 2013): `_xbegin`/`_xend`/`_xtest` control flow, not lane ops.
 //! Nightly (`nightly-rtm`). HLE has no `core::arch`. Token: [`Rtm::detect`].
 
-use core::arch::x86_64::{_XBEGIN_STARTED, _xbegin, _xend, _xtest};
+use crate::x86::arch::{_XBEGIN_STARTED, _xbegin, _xend, _xtest};
 
 use super::super::super::{Feature, FeatureSet};
 

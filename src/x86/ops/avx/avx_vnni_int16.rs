@@ -2,7 +2,7 @@
 //! (`avxvnniint16`). Token: [`AvxVnniInt16::detect`]. Same shape as
 //! `super::avx_vnni` (group = 2).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, _mm_dpwsud_epi32, _mm_dpwsuds_epi32, _mm_dpwusd_epi32, _mm_dpwusds_epi32,
     _mm_dpwuud_epi32, _mm_dpwuuds_epi32, _mm_loadu_si128, _mm_storeu_si128, _mm256_dpwsud_epi32,
     _mm256_dpwsuds_epi32, _mm256_dpwusd_epi32, _mm256_dpwusds_epi32, _mm256_dpwuud_epi32,

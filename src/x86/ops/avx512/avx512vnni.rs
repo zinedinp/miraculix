@@ -2,7 +2,7 @@
 //! Generated via `simd_vnni_dot`. 128/256-bit companions live in `super::avx512vl`.
 //! Auto dispatch cascades to VEX `AvxVnni` or scalar.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_dpbusd_epi32, _mm512_dpbusds_epi32, _mm512_dpwssd_epi32, _mm512_dpwssds_epi32,
     _mm512_loadu_si512, _mm512_mask_dpbusd_epi32, _mm512_mask_dpbusds_epi32,
     _mm512_mask_dpwssd_epi32, _mm512_mask_dpwssds_epi32, _mm512_maskz_dpbusd_epi32,

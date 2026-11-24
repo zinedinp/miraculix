@@ -2,7 +2,7 @@
 //! Provides float FMA, wide integer arithmetic, masks, and compares.
 //! `sqrt`/`rcp14`/`rsqrt14` are fixed-width only, see `simd_unop_fixed` doc.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m512, __m512d, __m512i, _CMP_EQ_OQ, _CMP_GE_OQ, _CMP_GT_OQ, _CMP_LE_OQ, _CMP_LT_OQ,
     _mm_loadu_si128, _mm_storeu_si128, _mm512_abs_epi32, _mm512_abs_epi64, _mm512_add_epi32,
     _mm512_add_epi64, _mm512_add_pd, _mm512_add_ps, _mm512_and_si512, _mm512_andnot_si512,
@@ -3977,9 +3977,9 @@ impl Avx512f {
 #[target_feature(enable = "avx512f")]
 unsafe fn cvtph2ps_x16(a: &[u16; 16]) -> [f32; 16] {
     unsafe {
-        let va: core::arch::x86_64::__m256i =
-            core::arch::x86_64::_mm256_loadu_si256(a.as_ptr().cast());
-        let vr = core::arch::x86_64::_mm512_cvtph_ps(va);
+        let va: crate::x86::arch::__m256i =
+            crate::x86::arch::_mm256_loadu_si256(a.as_ptr().cast());
+        let vr = crate::x86::arch::_mm512_cvtph_ps(va);
         let mut out = [0f32; 16];
         _mm512_storeu_ps(out.as_mut_ptr(), vr);
         out
@@ -3993,9 +3993,9 @@ unsafe fn cvtph2ps_x16(a: &[u16; 16]) -> [f32; 16] {
 unsafe fn cvtps2ph_x16<const ROUNDING: i32>(a: &[f32; 16]) -> [u16; 16] {
     unsafe {
         let va: __m512 = _mm512_loadu_ps(a.as_ptr());
-        let vr: core::arch::x86_64::__m256i = core::arch::x86_64::_mm512_cvtps_ph::<ROUNDING>(va);
+        let vr: crate::x86::arch::__m256i = crate::x86::arch::_mm512_cvtps_ph::<ROUNDING>(va);
         let mut out = [0u16; 16];
-        core::arch::x86_64::_mm256_storeu_si256(out.as_mut_ptr().cast(), vr);
+        crate::x86::arch::_mm256_storeu_si256(out.as_mut_ptr().cast(), vr);
         out
     }
 }

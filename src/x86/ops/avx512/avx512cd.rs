@@ -2,7 +2,7 @@
 //! Token: [`Avx512cd::detect`]. Ops: `conflict_*` (hand), `leading_zeros_*` (`simd_unop`+masked), `broadcast_mask_*`.
 //! u32/u64 only. No auto.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_broadcastmb_epi64, _mm512_broadcastmw_epi32, _mm512_conflict_epi32,
     _mm512_conflict_epi64, _mm512_loadu_si512, _mm512_lzcnt_epi32, _mm512_lzcnt_epi64,
     _mm512_mask_lzcnt_epi32, _mm512_mask_lzcnt_epi64, _mm512_maskz_lzcnt_epi32,

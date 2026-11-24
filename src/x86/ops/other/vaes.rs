@@ -2,7 +2,7 @@
 //! Hand-written (no elementwise scalar). Tokens: [`Vaes`] (`"vaes"`), [`Vaes512`] (`"vaes,avx512f"`).
 //! No 128-bit form (use [`super::aes::Aes`]).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m256i, __m512i, _mm256_aesdec_epi128, _mm256_aesdeclast_epi128, _mm256_aesenc_epi128,
     _mm256_aesenclast_epi128, _mm256_loadu_si256, _mm256_storeu_si256, _mm512_aesdec_epi128,
     _mm512_aesdeclast_epi128, _mm512_aesenc_epi128, _mm512_aesenclast_epi128, _mm512_loadu_si512,

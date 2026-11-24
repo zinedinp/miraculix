@@ -2,7 +2,7 @@
 //! plus wrapping add (`kadd`), `u8`/`u16`/`u32`/`u64`. See [`super`]
 //! for feature gating.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     _kadd_mask8, _kadd_mask16, _kadd_mask32, _kadd_mask64, _kand_mask8, _kand_mask16, _kand_mask32,
     _kand_mask64, _kandn_mask8, _kandn_mask16, _kandn_mask32, _kandn_mask64, _knot_mask8,
     _knot_mask16, _knot_mask32, _knot_mask64, _kor_mask8, _kor_mask16, _kor_mask32, _kor_mask64,

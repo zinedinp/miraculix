@@ -1,7 +1,7 @@
 //! SM3 (~2024 Sierra Forest/Granite Rapids): GB/T 32905-2016 hash, msg schedule + double-round (`"sm3"`).
 //! Token: [`Sm3::detect`] (no auto). Hand-written whole-block; msg2 takes msg1 output directly.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, _mm_loadu_si128, _mm_sm3msg1_epi32, _mm_sm3msg2_epi32, _mm_sm3rnds2_epi32,
     _mm_storeu_si128,
 };

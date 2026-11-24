@@ -2,7 +2,7 @@
 //! 512-bit token [`Avx512Vbmi`] (`"avx512vbmi"`): `permutexvar`, `permutex2var`, `multishift`.
 //! Tier-unique, no `auto`. 128/256-bit: [`super::avx512vl`] (`Avx512VbmiVl`).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_loadu_si512, _mm512_mask_multishift_epi64_epi8, _mm512_mask_permutex2var_epi8,
     _mm512_mask_permutexvar_epi8, _mm512_maskz_multishift_epi64_epi8,
     _mm512_maskz_permutex2var_epi8, _mm512_maskz_permutexvar_epi8, _mm512_multishift_epi64_epi8,

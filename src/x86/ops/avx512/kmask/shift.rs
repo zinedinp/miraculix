@@ -1,7 +1,7 @@
 //! k-mask shifts (`kshiftl`/`kshiftr`, zero-filled) for `u8`/`u16`/`u32`/`u64`.
 //! See [`super`] for feature gating.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     _kshiftli_mask8, _kshiftli_mask16, _kshiftli_mask32, _kshiftli_mask64, _kshiftri_mask8,
     _kshiftri_mask16, _kshiftri_mask32, _kshiftri_mask64,
 };

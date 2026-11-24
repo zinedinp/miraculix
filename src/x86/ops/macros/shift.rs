@@ -40,7 +40,7 @@ macro_rules! simd_shift_imm {
 
 			for (ac, oc) in a_chunks.zip(out_chunks.by_ref()) {
 				unsafe {
-					use core::arch::x86_64::_mm_cvtsi32_si128;
+					use crate::x86::arch::_mm_cvtsi32_si128;
 					let va: $Vec = $loadu(ac.as_ptr().cast());
 					let count = _mm_cvtsi32_si128(IMM as i32);
 					let vr = $shift(va, count);
@@ -59,7 +59,7 @@ macro_rules! simd_shift_imm {
 		#[target_feature(enable = $tf)]
 		unsafe fn $intrinsic_fn<const IMM: u32>(a: &[$Elem; $width]) -> [$Elem; $width] {
 			unsafe {
-				use core::arch::x86_64::_mm_cvtsi32_si128;
+				use crate::x86::arch::_mm_cvtsi32_si128;
 				let va: $Vec = $loadu(a.as_ptr().cast());
 				let count = _mm_cvtsi32_si128(IMM as i32);
 				let vr = $shift(va, count);

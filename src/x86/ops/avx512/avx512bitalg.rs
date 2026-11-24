@@ -1,7 +1,7 @@
 //! AVX512BITALG: per-lane population counts and 512-bit bitshuffle.
 //! Token: `Avx512Bitalg`.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_bitshuffle_epi64_mask, _mm512_loadu_si512, _mm512_mask_popcnt_epi8,
     _mm512_mask_popcnt_epi16, _mm512_maskz_popcnt_epi8, _mm512_maskz_popcnt_epi16,
     _mm512_popcnt_epi8, _mm512_popcnt_epi16, _mm512_storeu_si512,

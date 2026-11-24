@@ -1,7 +1,7 @@
 //! SSE4.1: `"sse4.1"`. Token: [`Sse41::detect`].
 //! Provides select/blend, i64 cmpeq, i32/u32 mul, native min/max, and fixed-width rounding.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128, __m128d, __m128i, _mm_blend_epi16, _mm_blendv_epi8, _mm_blendv_pd, _mm_blendv_ps,
     _mm_cmpeq_epi64, _mm_loadu_pd, _mm_loadu_ps, _mm_loadu_si128, _mm_max_epi8, _mm_max_epi32,
     _mm_max_epu16, _mm_max_epu32, _mm_min_epi8, _mm_min_epi32, _mm_min_epu16, _mm_min_epu32,

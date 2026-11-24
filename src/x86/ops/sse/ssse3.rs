@@ -1,7 +1,7 @@
 //! SSSE3: `pshufb` byte LUT/permute, `pabs*`, and `palignr` byte-window align.
 //! Fixed-width only. Token: [`Ssse3::detect`].
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, _mm_abs_epi8, _mm_abs_epi16, _mm_abs_epi32, _mm_alignr_epi8, _mm_loadu_si128,
     _mm_shuffle_epi8, _mm_storeu_si128,
 };

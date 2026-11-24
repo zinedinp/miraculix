@@ -2,7 +2,7 @@
 //! Stable `core::arch`. Token: [`Pclmulqdq::detect`]. Hand-written;
 //! `const IMM8` selects operand halves. Scalar XOR-shift ref in tests.
 
-use core::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_loadu_si128, _mm_storeu_si128};
+use crate::x86::arch::{__m128i, _mm_clmulepi64_si128, _mm_loadu_si128, _mm_storeu_si128};
 
 use super::super::super::{Feature, FeatureSet};
 

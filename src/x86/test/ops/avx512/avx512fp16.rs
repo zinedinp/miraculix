@@ -858,7 +858,7 @@ fn int_to_ph_round_matches_default_rounding_for_exact_values() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let i16s: [i16; 32] = core::array::from_fn(|i| i as i16 - 16);
     let u16s: [u16; 32] = core::array::from_fn(|i| i as u16 + 1);
@@ -879,7 +879,7 @@ fn ph_to_int_round_matches_default_rounding_for_exact_values() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let a32: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 - 16.0));
     let a16: [u16; 16] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 - 8.0));
@@ -960,7 +960,7 @@ fn f32_to_ph_x_round_matches_default_rounding_for_exact_values() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let a: [f32; 16] = core::array::from_fn(|i| i as f32 - 8.0);
     assert_eq!(t.f32x16_to_ph_x_round::<RN>(a), t.f32x16_to_ph_x(a));
@@ -1215,7 +1215,7 @@ fn getmant_sh_normalizes_mantissa() {
     let Some(t) = Avx512Fp16Vl::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
+    use crate::x86::arch::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
     let a = ph_carrier(&[9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0]);
     let b = ph_carrier(&[12.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
     let got = t.getmant_sh_u16x8::<_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC>(a, b);
@@ -1332,7 +1332,7 @@ fn add_round_ph_respects_explicit_rounding_mode() {
     // operands are exactly representable in f16, so no input rounding muddies the result.
     let a = [0x3c00u16; 32]; // 1.0
     let b = [0x1000u16; 32]; // 2^-11
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_POS_INF, _MM_FROUND_TO_ZERO};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_POS_INF, _MM_FROUND_TO_ZERO};
     let toward_zero = t.add_round_ph_u16x32::<{ _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC }>(a, b);
     let toward_pos_inf =
         t.add_round_ph_u16x32::<{ _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC }>(a, b);
@@ -1351,7 +1351,7 @@ fn sub_mul_div_round_ph_match_default_rounding_for_exact_values() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let a = [f32_to_f16_scalar(6.0); 32];
     let b = [f32_to_f16_scalar(2.0); 32];
@@ -1365,7 +1365,7 @@ fn sqrt_round_ph_matches_default_rounding_for_exact_values() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     let a = [f32_to_f16_scalar(9.0); 32];
     assert_eq!(
         t.sqrt_round_ph_u16x32::<{ _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC }>(a),
@@ -1378,7 +1378,7 @@ fn fma_family_round_ph_match_default_rounding_for_exact_values() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let a = [f32_to_f16_scalar(2.0); 32];
     let b = [f32_to_f16_scalar(3.0); 32];
@@ -1481,7 +1481,7 @@ fn getmant_ph_u16x8_normalizes_mantissa() {
     let Some(t) = Avx512Fp16Vl::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
+    use crate::x86::arch::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
     let a = ph_carrier(&[12.0, -12.0, 0.0, 0.0]);
     let got = t.getmant_ph_u16x8::<_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC>(a);
     assert_eq!(f16_to_f32_scalar(got[0]), 1.5); // 12.0 = 1.5 * 2^3
@@ -1496,7 +1496,7 @@ fn reduce_roundscale_getmant_widths_agree_on_shared_low_lanes() {
     let Some(t512) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
+    use crate::x86::arch::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
     let a8 = ph_carrier(&[3.75, -1.25, 12.0, -12.0]);
     let mut a32 = [f32_to_f16_scalar(1.0); 32];
     a32[..8].copy_from_slice(&a8);
@@ -2460,7 +2460,7 @@ fn getmant_ph_masked_matches_unmasked() {
     let Some(t) = Avx512Fp16Vl::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
+    use crate::x86::arch::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
     let a32: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 * 0.5 + 1.0));
     let src32: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(-(i as f32) - 100.0));
     let mask32: u32 = 0x5A5A_5A5A;
@@ -2523,7 +2523,7 @@ fn getmant_sh_masked_matches_unmasked() {
     let Some(t) = Avx512Fp16Vl::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
+    use crate::x86::arch::{_MM_MANT_NORM_1_2, _MM_MANT_SIGN_SRC};
     let a: [u16; 8] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 + 1.0));
     let b: [u16; 8] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 * 0.5 + 2.0));
     let src: [u16; 8] = core::array::from_fn(|i| f32_to_f16_scalar(-(i as f32) - 100.0));
@@ -2644,7 +2644,7 @@ fn round_ph_masked_matches_unmasked() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let a: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 + 1.0));
     let b: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 * 0.5 + 2.0));
@@ -2722,7 +2722,7 @@ fn fma_round_ph_masked_matches_unmasked() {
     let Some(t) = Avx512Fp16::detect() else {
         return;
     };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let a: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 + 1.0));
     let b: [u16; 32] = core::array::from_fn(|i| f32_to_f16_scalar(i as f32 * 0.5 + 2.0));

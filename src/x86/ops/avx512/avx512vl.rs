@@ -3,7 +3,7 @@
 //! This module is for `ops::` callers needing a fixed 128/256-bit width.
 //! `Avx512FVl`'s `rcp14`/`rsqrt14` are fixed-width only
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128,
     __m128bh,
     __m128d,
@@ -2541,7 +2541,7 @@ simd_ternarylogic! {
 // dedicated `use` block (rather than merged into the file-top one above)
 // since this is a self-contained ~50-instantiation family added in one
 // batch: easier to audit against the token it serves.
-use core::arch::x86_64::{
+use crate::x86::arch::{
     _mm_mask_add_epi8, _mm_mask_add_epi16, _mm_mask_adds_epi8, _mm_mask_adds_epi16,
     _mm_mask_adds_epu8, _mm_mask_adds_epu16, _mm_mask_avg_epu8, _mm_mask_avg_epu16,
     _mm_mask_max_epi8, _mm_mask_max_epi16, _mm_mask_max_epu8, _mm_mask_max_epu16,

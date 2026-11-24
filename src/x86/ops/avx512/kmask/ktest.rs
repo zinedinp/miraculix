@@ -2,7 +2,7 @@
 //! CF/ZF are returned as `bool` rather than a mask value. See [`super`]
 //! for feature gating.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     _kortestc_mask8_u8, _kortestc_mask16_u8, _kortestc_mask32_u8, _kortestc_mask64_u8,
     _kortestz_mask8_u8, _kortestz_mask16_u8, _kortestz_mask32_u8, _kortestz_mask64_u8,
     _ktestc_mask8_u8, _ktestc_mask16_u8, _ktestc_mask32_u8, _ktestc_mask64_u8, _ktestz_mask8_u8,

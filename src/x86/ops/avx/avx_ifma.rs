@@ -1,7 +1,7 @@
 //! AVX-IFMA: VEX 52-bit integer FMA on `u64` lanes (`avxifma`).
 //! Token: [`AvxIfma::detect`]. Same math as EVEX `avx512ifma` but a distinct CPUID bit; falls back to scalar if absent.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128i, __m256i, _mm_loadu_si128, _mm_madd52hi_avx_epu64, _mm_madd52lo_avx_epu64,
     _mm_storeu_si128, _mm256_loadu_si256, _mm256_madd52hi_avx_epu64, _mm256_madd52lo_avx_epu64,
     _mm256_storeu_si256,

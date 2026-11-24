@@ -2,7 +2,7 @@
 //! [`AvxNeConvert::detect`]. Provides deinterleave helpers and conversion
 //! intrinsics for BF16/FP16 to `f32`.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128, __m128bh, __m128h, __m256, __m256bh, __m256h, _mm_cvtneebf16_ps, _mm_cvtneeph_ps,
     _mm_cvtneobf16_ps, _mm_cvtneoph_ps, _mm_cvtneps_avx_pbh, _mm_loadu_ps, _mm_storeu_ps,
     _mm256_cvtneebf16_ps, _mm256_cvtneeph_ps, _mm256_cvtneobf16_ps, _mm256_cvtneoph_ps,

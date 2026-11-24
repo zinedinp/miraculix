@@ -81,7 +81,7 @@ fn avx512_fn_runs_body_and_returns_its_value() {
 
 crate::f16c_fn! {
     fn roundtrip_via_f16c_fn(f16c: F16c, a: [f32; 8]) -> [f32; 8] {
-        let halves = f16c.f32_to_f16x8::<{ core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT }>(a);
+        let halves = f16c.f32_to_f16x8::<{ crate::x86::arch::_MM_FROUND_TO_NEAREST_INT }>(a);
         f16c.f16_to_f32x8(halves)
     }
 }

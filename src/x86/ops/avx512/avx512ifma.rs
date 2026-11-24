@@ -3,7 +3,7 @@
 //! This file uses EVEX names; the VEX-suffixed forms are in `avx_ifma.rs`.
 //! 128/256-bit `Avx512IfmaVl` lives in `super::avx512vl`.
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m512i, _mm512_loadu_si512, _mm512_madd52hi_epu64, _mm512_madd52lo_epu64,
     _mm512_mask_madd52hi_epu64, _mm512_mask_madd52lo_epu64, _mm512_maskz_madd52hi_epu64,
     _mm512_maskz_madd52lo_epu64, _mm512_storeu_si512,

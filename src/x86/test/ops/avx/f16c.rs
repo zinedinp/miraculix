@@ -40,7 +40,7 @@ fn f16_to_f32x8_converts_known_values() {
 fn f32_to_f16x4_converts_known_values() {
     let Some(t) = F16c::detect() else { return };
     let a = [1.0f32, 2.0, 3.0, 4.0];
-    const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     assert_eq!(
         t.f32_to_f16x4::<ROUNDING>(a),
         [F16_ONE, F16_TWO, F16_THREE, F16_FOUR]
@@ -51,7 +51,7 @@ fn f32_to_f16x4_converts_known_values() {
 fn f32_to_f16x8_converts_known_values() {
     let Some(t) = F16c::detect() else { return };
     let a = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-    const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     assert_eq!(
         t.f32_to_f16x8::<ROUNDING>(a),
         [
@@ -63,7 +63,7 @@ fn f32_to_f16x8_converts_known_values() {
 #[test]
 fn roundtrip_is_exact_for_representable_values() {
     let Some(t) = F16c::detect() else { return };
-    const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     // 1023.5 not 1024.5: half ULP is 0.5 in [512,1024), 1.0 in [1024,2048).
     let f32s = [0.0f32, -0.0, 1.0, -1.0, 0.5, 65504.0, -65504.0, 1023.5];
     let halves = t.f32_to_f16x8::<ROUNDING>(f32s);
@@ -99,7 +99,7 @@ fn f16_to_f32_slice_matches_scalar_for_various_lengths() {
 #[test]
 fn f32_to_f16_slice_matches_scalar_for_various_lengths() {
     let Some(t) = F16c::detect() else { return };
-    const ROUNDING: i32 = core::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    const ROUNDING: i32 = crate::x86::arch::_MM_FROUND_TO_NEAREST_INT;
     for len in [0usize, 1, 3, 4, 5, 7, 8, 9, 15, 16, 17, 100] {
         let a: Vec<f32> = (0..len).map(|i| i as f32 + 1.0).collect();
         let mut out = vec![0u16; len];

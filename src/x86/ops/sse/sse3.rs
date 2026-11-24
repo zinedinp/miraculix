@@ -2,7 +2,7 @@
 //! at f32x4/f64x2. Stable `core::arch`. Token: [`Sse3::detect`]. Hand-written
 //! fixed-width only (lane-index / pair shape; no natural slice rem).
 
-use core::arch::x86_64::{
+use crate::x86::arch::{
     __m128, __m128d, _mm_add_pd, _mm_add_ps, _mm_addsub_pd, _mm_addsub_ps, _mm_hadd_pd,
     _mm_hadd_ps, _mm_hsub_pd, _mm_hsub_ps, _mm_loadu_pd, _mm_loadu_ps, _mm_movehdup_ps,
     _mm_moveldup_ps, _mm_mul_pd, _mm_mul_ps, _mm_shuffle_pd, _mm_shuffle_ps, _mm_storeu_pd,

@@ -1,4 +1,4 @@
-use core::arch::x86_64::{_mm_shuffle_epi32, _mm_slli_si128, _mm_xor_si128};
+use crate::x86::arch::{_mm_shuffle_epi32, _mm_slli_si128, _mm_xor_si128};
 
 use super::*;
 

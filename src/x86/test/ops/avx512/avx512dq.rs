@@ -126,7 +126,7 @@ fn f32_to_u64x8_trunc_matches_as_cast() {
 #[test]
 fn round_cvt_matches_default_rounding_for_exact_values() {
     let Some(t) = Avx512Dq::detect() else { return };
-    use core::arch::x86_64::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
+    use crate::x86::arch::{_MM_FROUND_NO_EXC, _MM_FROUND_TO_NEAREST_INT};
     const RN: i32 = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC;
     let f64s: [f64; 8] = [-1000.0, -1.0, 0.0, 1.0, 2.0, 42.0, 1000.0, 123456.0];
     let i64s: [i64; 8] = [-1000, -1, 0, 1, 2, 42, 1000, 123456];

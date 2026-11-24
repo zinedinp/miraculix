@@ -14,6 +14,56 @@
 //! No app `init` is required. First detect fills a process-wide cache.
 
 use crate::level_cache::CachedU8;
+
+/// The target's intrinsics: `core::arch::x86` on 32-bit x86,
+/// `core::arch::x86_64` on x86-64. The op tables import from here so one
+/// source serves both; what exists on x86-64 only is gated where it's used.
+#[cfg(target_arch = "x86")]
+pub(crate) mod arch {
+    pub use core::arch::x86::*;
+
+    // The x86-64-only intrinsics the op tables use, from 32-bit ones with
+    // the same result, so the tables compile unchanged.
+
+    /// `_mm_cvtsi64_si128`: `a` in the low lane, the high lane zero.
+    #[inline]
+    #[target_feature(enable = "sse2")]
+    pub fn _mm_cvtsi64_si128(a: i64) -> __m128i {
+        _mm_set_epi64x(0, a)
+    }
+
+    /// `_mm_cvtsi128_si64`: the low 64-bit lane.
+    #[inline]
+    #[target_feature(enable = "sse2")]
+    pub fn _mm_cvtsi128_si64(a: __m128i) -> i64 {
+        let lo = _mm_cvtsi128_si32(a).cast_unsigned();
+        let hi = _mm_cvtsi128_si32(_mm_srli_si128::<4>(a)).cast_unsigned();
+        ((u64::from(hi) << 32) | u64::from(lo)).cast_signed()
+    }
+
+    /// `_popcnt64`: both halves counted.
+    #[inline]
+    #[target_feature(enable = "popcnt")]
+    pub fn _popcnt64(x: i64) -> i32 {
+        #[allow(clippy::cast_possible_truncation, reason = "the two halves")]
+        let (lo, hi) = (x as i32, (x >> 32) as i32);
+        _popcnt32(lo) + _popcnt32(hi)
+    }
+
+    /// `_mm_crc32_u64`: CRC32-C of the eight bytes, low dword first, on the
+    /// low 32 bits of `crc`; the result zero-extended.
+    #[inline]
+    #[target_feature(enable = "sse4.2")]
+    pub fn _mm_crc32_u64(crc: u64, v: u64) -> u64 {
+        #[allow(clippy::cast_possible_truncation, reason = "the low halves")]
+        let low = _mm_crc32_u32(crc as u32, v as u32);
+        #[allow(clippy::cast_possible_truncation, reason = "the high half")]
+        let high = (v >> 32) as u32;
+        u64::from(_mm_crc32_u32(low, high))
+    }
+}
+#[cfg(target_arch = "x86_64")]
+pub(crate) use core::arch::x86_64 as arch;
 use features::CachedFeatureSet;
 
 mod auto_down;

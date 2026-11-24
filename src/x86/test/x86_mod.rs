@@ -116,3 +116,48 @@ fn auto_alias_matches_auto_up() {
     assert_eq!(via_up, via_alias);
     assert_eq!(via_up, [11, 22, 33, 44]);
 }
+
+/// 32-bit x86: the stand-ins for the x86-64-only intrinsics in `arch` give
+/// what those do (SSE4a, the one user of the two `cvtsi*64` without other
+/// coverage, exists on AMD only).
+#[test]
+#[cfg(target_arch = "x86")]
+fn x86_64_only_intrinsics_have_32bit_stand_ins() {
+    use crate::x86::arch::{
+        _mm_crc32_u8, _mm_crc32_u64, _mm_cvtsi64_si128, _mm_cvtsi128_si64, _mm_srli_si128,
+        _popcnt64,
+    };
+    let set = FeatureSet::detect();
+    let values = [
+        0i64,
+        1,
+        -1,
+        i64::MIN,
+        i64::MAX,
+        0x0123_4567_89ab_cdef,
+        -0x7654_3210_fedc_ba98,
+    ];
+    for v in values {
+        // SAFETY: SSE2 is the x86 baseline numerobis targets (i686).
+        unsafe {
+            let x = _mm_cvtsi64_si128(v);
+            assert_eq!(_mm_cvtsi128_si64(x), v);
+            assert_eq!(_mm_cvtsi128_si64(_mm_srli_si128::<8>(x)), 0, "high lane zero");
+        }
+        if set.contains(Feature::Popcnt) {
+            // SAFETY: POPCNT detected.
+            let n = unsafe { _popcnt64(v) };
+            assert_eq!(n.cast_unsigned(), v.count_ones());
+        }
+        if set.contains(Feature::Sse42) {
+            let mut want = 0x1234_5678u32;
+            for b in v.to_le_bytes() {
+                // SAFETY: SSE4.2 detected.
+                want = unsafe { _mm_crc32_u8(want, b) };
+            }
+            // SAFETY: SSE4.2 detected.
+            let got = unsafe { _mm_crc32_u64(0xffff_ffff_1234_5678, v.cast_unsigned()) };
+            assert_eq!(got, u64::from(want), "low 32 bits of crc used, result zero-extended");
+        }
+    }
+}
