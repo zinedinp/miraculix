@@ -3977,8 +3977,7 @@ impl Avx512f {
 #[target_feature(enable = "avx512f")]
 unsafe fn cvtph2ps_x16(a: &[u16; 16]) -> [f32; 16] {
     unsafe {
-        let va: crate::x86::arch::__m256i =
-            crate::x86::arch::_mm256_loadu_si256(a.as_ptr().cast());
+        let va: crate::x86::arch::__m256i = crate::x86::arch::_mm256_loadu_si256(a.as_ptr().cast());
         let vr = crate::x86::arch::_mm512_cvtph_ps(va);
         let mut out = [0f32; 16];
         _mm512_storeu_ps(out.as_mut_ptr(), vr);

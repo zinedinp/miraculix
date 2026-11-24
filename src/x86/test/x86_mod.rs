@@ -142,7 +142,11 @@ fn x86_64_only_intrinsics_have_32bit_stand_ins() {
         unsafe {
             let x = _mm_cvtsi64_si128(v);
             assert_eq!(_mm_cvtsi128_si64(x), v);
-            assert_eq!(_mm_cvtsi128_si64(_mm_srli_si128::<8>(x)), 0, "high lane zero");
+            assert_eq!(
+                _mm_cvtsi128_si64(_mm_srli_si128::<8>(x)),
+                0,
+                "high lane zero"
+            );
         }
         if set.contains(Feature::Popcnt) {
             // SAFETY: POPCNT detected.
@@ -157,7 +161,11 @@ fn x86_64_only_intrinsics_have_32bit_stand_ins() {
             }
             // SAFETY: SSE4.2 detected.
             let got = unsafe { _mm_crc32_u64(0xffff_ffff_1234_5678, v.cast_unsigned()) };
-            assert_eq!(got, u64::from(want), "low 32 bits of crc used, result zero-extended");
+            assert_eq!(
+                got,
+                u64::from(want),
+                "low 32 bits of crc used, result zero-extended"
+            );
         }
     }
 }
