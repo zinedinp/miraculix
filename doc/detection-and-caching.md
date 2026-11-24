@@ -140,7 +140,7 @@ For element-wise work, branch on the token outside the loop and run a
 | AArch64 | `Token::from_features(detect_features())` | token methods |
 | AArch64 | `Neon::detect()` | `reduce::*_with(neon, ..)` (`None` = portable path) |
 | RISC-V | `Rvv::from_features(detect_features())` | `Rvv` methods |
-| PowerPC | `Vsx::from_features(detect_features())` (also `Isa300`, `Mma`, `Vmx`, `PairedSingle`, `Vmx128`) | token methods |
+| PowerPC | `Vsx::from_features(detect_features())` (also `Isa300`, `Isa31`, `Mma`, `Vmx`, `PairedSingle`, `Vmx128`) | token methods |
 | wasm | `Simd128::from_features(detect_features())` | token methods |
 
 A `reduce::Tier` and a `Neon` token can only come from detection, so the

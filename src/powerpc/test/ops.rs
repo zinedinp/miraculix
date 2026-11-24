@@ -362,6 +362,88 @@ fn isa300_f16_matches_the_scalar_codec() {
     }
 }
 
+#[cfg(target_arch = "powerpc64")]
+#[test]
+fn isa31_kernels() {
+    let Some(t) = crate::powerpc::ops::isa31::Isa31::detect() else {
+        return;
+    };
+    check_sum_dot("isa31", &move |a| t.reduce_sum_f32(a), &move |a, b| {
+        t.dot_f32(a, b)
+    });
+    let v = crate::powerpc::ops::vsx::Vsx::detect().expect("ISA 3.1 implies VSX");
+    check_extremes(
+        "isa31",
+        &move |a| v.reduce_max_f32(a),
+        &move |a| v.reduce_min_f32(a),
+        &move |a| t.argmax_f32(a),
+    );
+    for n in lengths() {
+        let a = data(n, 3 + n as u32);
+        for thr in [-1000.0, 0.0, 17.5, f32::INFINITY, f32::NEG_INFINITY] {
+            let want: Vec<u32> = (0..n as u32).filter(|&i| a[i as usize] > thr).collect();
+            let mut out = vec![u32::MAX; n];
+            let k = t.compress_gt_f32(&a, thr, &mut out);
+            assert_eq!(&out[..k], &want[..], "compress {n} > {thr}");
+        }
+    }
+    // Ties: the first of several equal maxima, also across mask batches.
+    let mut a = vec![1.0f32; 2000];
+    a[700] = 5.0;
+    a[1500] = 5.0;
+    assert_eq!(t.argmax_f32(&a), Some((700, 5.0)));
+}
+
+#[cfg(target_arch = "powerpc64")]
+#[test]
+fn isa31_bf16_encode_matches_the_scalar_codec() {
+    use crate::formats::{Overflow, bf16_fast};
+    let Some(t) = crate::powerpc::ops::isa31::Isa31::detect() else {
+        return;
+    };
+    // Every bf16 value, the midpoints between neighbours (ties to even), plus
+    // values just around them, subnormals and overflow.
+    let mut src: Vec<f32> = (0..=u16::MAX)
+        .map(|h| f32::from_bits((h as u32) << 16))
+        .filter(|x| !x.is_nan())
+        .collect();
+    let mids: Vec<f32> = (0..=u16::MAX - 1)
+        .map(|h| f32::from_bits(((h as u32) << 16) | 0x8000))
+        .filter(|x| !x.is_nan())
+        .collect();
+    for &m in &mids {
+        src.extend([
+            m,
+            f32::from_bits(m.to_bits() + 1),
+            f32::from_bits(m.to_bits() - 1),
+        ]);
+    }
+    src.extend([f32::MAX, -f32::MAX, 1e-40, -1e-45, f32::MIN_POSITIVE]);
+    let mut got = vec![0u16; src.len()];
+    t.cvt_f32_to_bf16_slice(&src, &mut got);
+    for (&x, &g) in src.iter().zip(&got) {
+        assert_eq!(
+            g,
+            bf16_fast(x, Overflow::Special),
+            "{x:e} ({:#010x})",
+            x.to_bits()
+        );
+    }
+    // NaN stays NaN (also a signalling NaN whose payload sits in the dropped bits).
+    let nan = [
+        f32::NAN,
+        f32::from_bits(0x7f80_0001),
+        f32::from_bits(0xffc1_2345),
+    ]
+    .repeat(8);
+    let mut out = vec![0u16; nan.len()];
+    t.cvt_f32_to_bf16_slice(&nan, &mut out);
+    assert!(
+        out.iter().all(|&b| b & 0x7f80 == 0x7f80 && b & 0x7f != 0),
+        "{out:x?}"
+    );
+}
+
 /// CI sets `MIRACULIX_EXPECT_POWER` to the kernels the QEMU CPU model must
 /// provide (`vmx`, `power8`, `power9`, `power10`), so a detection bug cannot
 /// turn every token test above into a silent skip.

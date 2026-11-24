@@ -405,6 +405,13 @@ impl MiniFloat {
                     return;
                 }
             }
+            #[cfg(target_arch = "powerpc64")]
+            if overflow == Overflow::Special
+                && let Some(t) = crate::powerpc::ops::isa31::Isa31::detect()
+            {
+                t.cvt_f32_to_bf16_slice(src, dst);
+                return;
+            }
             dst.iter_mut()
                 .zip(src)
                 .for_each(|(d, &s)| *d = bf16_fast(s, overflow));
@@ -438,7 +445,7 @@ impl MiniFloat {
     }
 }
 
-fn bf16_fast(x: f32, overflow: Overflow) -> u16 {
+pub(crate) fn bf16_fast(x: f32, overflow: Overflow) -> u16 {
     let b = x.to_bits();
     if (b & 0x7FFF_FFFF) > 0x7F80_0000 {
         return ((b >> 16) | 0x40) as u16; // quiet NaN, payload kept

@@ -1,6 +1,6 @@
 [package]
 name = "miraculix"
-version = "0.6.12-beta"
+version = "0.7.0"
 authors = ["Zinedin Polic"]
 edition = "2024"
 rust-version = "1.100.0"

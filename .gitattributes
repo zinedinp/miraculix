@@ -1,0 +1,6 @@
+# Static-library stubs for the QEMU probes: their ar magic ends in a single
+# LF, so autocrlf must never turn it into CRLF.
+*.a -text
+
+# Shell scripts run under Linux / WSL even when checked out on Windows.
+*.sh text eol=lf

@@ -180,7 +180,7 @@ impl Isa300 {
 
     /// Sum of the `< 32` floats after the whole blocks: full vectors, then one
     /// `lxvl` (whose unused lanes are zero). `B` = with a second input (dot).
-    fn tail_reduce<const DOT: bool>(a: &[f32], b: &[f32]) -> f32 {
+    pub(crate) fn tail_reduce<const DOT: bool>(a: &[f32], b: &[f32]) -> f32 {
         debug_assert!(a.len() < 32);
         let (nv, bytes) = (a.len() / 4, a.len() % 4 * 4);
         let mut out = [0f32; 4];

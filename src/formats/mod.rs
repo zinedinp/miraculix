@@ -40,6 +40,8 @@ mod minifloat;
 pub mod mx;
 mod tf32;
 
+#[cfg_attr(not(target_arch = "powerpc64"), allow(unused_imports))]
+pub(crate) use minifloat::bf16_fast;
 pub use minifloat::{MiniFloat, Overflow, Special};
 pub use tf32::{round_to_tf32, round_to_tf32_slice};
 

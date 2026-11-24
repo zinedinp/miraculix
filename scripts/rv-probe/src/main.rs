@@ -95,25 +95,30 @@ pub extern "C" fn _start() -> ! {
     exit(if f == 0 { 0 } else { f.trailing_zeros() as u64 + 1 })
 }
 
+use core::ffi::c_void;
+
 // No libc: byte loops with volatile accesses so they never lower to memcpy/memset themselves.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcpy(d: *mut u8, s: *const u8, n: usize) -> *mut u8 {
+pub unsafe extern "C" fn memcpy(d: *mut c_void, s: *const c_void, n: usize) -> *mut c_void {
+    let (dp, sp) = (d.cast::<u8>(), s.cast::<u8>());
     for i in 0..n {
-        unsafe { d.add(i).write_volatile(s.add(i).read_volatile()) };
+        unsafe { dp.add(i).write_volatile(sp.add(i).read_volatile()) };
     }
     d
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memset(d: *mut u8, c: i32, n: usize) -> *mut u8 {
+pub unsafe extern "C" fn memset(d: *mut c_void, c: i32, n: usize) -> *mut c_void {
+    let dp = d.cast::<u8>();
     for i in 0..n {
-        unsafe { d.add(i).write_volatile(c as u8) };
+        unsafe { dp.add(i).write_volatile(c as u8) };
     }
     d
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn bcmp(a: *const u8, b: *const u8, n: usize) -> i32 {
+pub unsafe extern "C" fn bcmp(a: *const c_void, b: *const c_void, n: usize) -> i32 {
+    let (ap, bp) = (a.cast::<u8>(), b.cast::<u8>());
     for i in 0..n {
-        let (x, y) = unsafe { (a.add(i).read_volatile(), b.add(i).read_volatile()) };
+        let (x, y) = unsafe { (ap.add(i).read_volatile(), bp.add(i).read_volatile()) };
         if x != y {
             return x as i32 - y as i32;
         }
@@ -205,7 +210,9 @@ fn extra_checks() {
     check(25, auto::topk_f32(&a, &mut idx, &mut val) == 3 && val == [11.0, 11.0, 11.0]);
     check(26, auto::dot_i8_i32(&[1, -2, 3], &[4, 5, -6]) == -24);
     // class: pure classification + live VLEN
-    let v = FeatureSet::default().with(Feature::V);
+    // The live set: rv-probe runs with `v=true`, so it has `V`.
+    let v = miraculix::riscv::detect_features();
+    check(51, v.contains(Feature::V));
     let x280 = CoreId { vendor: class::VENDOR_SIFIVE, arch: 0, imp: 0 };
     check(27, RiscvClass::from_parts(v, x280, Some(512)) == RiscvClass::VectorAccelerator);
     check(28, RiscvClass::from_parts(v, x280, Some(128)) == RiscvClass::Application);

@@ -4,6 +4,7 @@
 //! |---|---|---|---|
 //! | `vsx` | `Vsx` | POWER7+ (ISA 2.06), OpenPOWER cores with VSX | VSX; both endians |
 //! | `isa300` | `Isa300` | POWER9+ (ISA 3.0): `lxvl` tails, FP16 | `powerpc64` |
+//! | `isa31` | `Isa31` | POWER10/11 (ISA 3.1): `lxvp` reductions, `vextractwm` compress/argmax, bf16 encode | `powerpc64` |
 //! | `mma` | `Mma` | POWER10/11 (ISA 3.1): GEMM on the MMA accumulators | `powerpc64` |
 //! | `vmx` | `Vmx` | G4, G5, Cell PPE (PS3), Xenon (Xbox 360) | AltiVec; big-endian targets |
 //! | `paired` | `PairedSingle` | Gekko, Broadway, Espresso (GameCube, Wii, Wii U) | 32-bit `powerpc`, bare metal |
@@ -43,6 +44,9 @@ pub mod vsx;
 
 #[cfg(target_arch = "powerpc64")]
 pub mod isa300;
+
+#[cfg(target_arch = "powerpc64")]
+pub mod isa31;
 
 #[cfg(target_arch = "powerpc64")]
 pub mod mma;

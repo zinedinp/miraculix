@@ -322,6 +322,13 @@ impl Vsx {
             .then_some(Vsx(()))
     }
 
+    /// For tokens that imply VSX (ISA 3.1): their own proof covers it.
+    #[cfg_attr(not(target_arch = "powerpc64"), allow(dead_code))]
+    #[inline]
+    pub(crate) const fn implied() -> Self {
+        Vsx(())
+    }
+
     #[inline]
     fn map2<T: Copy>(
         a: &[T],

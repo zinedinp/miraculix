@@ -6,8 +6,10 @@
 //! | Op group | Order |
 //! |---|---|
 //! | element-wise f32/i32 | `Isa300` > `Vsx` > `Vmx` > `PairedSingle` (f32) > portable |
-//! | `dot_f32`, `reduce_sum_f32` | `Isa300` > `Vsx` > `Vmx128` > `Vmx` > `PairedSingle` > portable |
-//! | max/min/argmax, `bf16_to_f32` | `Vsx` > `Vmx` > portable |
+//! | `dot_f32`, `reduce_sum_f32` | `Isa31` > `Isa300` > `Vsx` > `Vmx128` > `Vmx` > `PairedSingle` > portable |
+//! | max/min, `bf16_to_f32` | `Vsx` > `Vmx` > portable |
+//! | `argmax_f32` | `Isa31` > `Vsx` > `Vmx` > portable |
+//! | `compress_gt_f32` (and `topk_f32`) | `Isa31` > portable |
 //! | `affine_u16_f32` | `Vsx` > `Vmx` > `PairedSingle` > portable |
 //! | `gemm_f32_kernel` | `Mma` > portable |
 //! | everything else | portable (`reduce_common`) |
@@ -47,6 +49,12 @@ rung!(
     isa300,
     Isa300Rung,
     super::ops::isa300::Isa300,
+    target_arch = "powerpc64"
+);
+rung!(
+    isa31,
+    Isa31Rung,
+    super::ops::isa31::Isa31,
     target_arch = "powerpc64"
 );
 rung!(
@@ -113,6 +121,9 @@ impl Never {
         match self {}
     }
     fn affine_u16_f32(self, q: &[u16], a: f32, b: f32, out: &mut [f32]) {
+        match self {}
+    }
+    fn compress_gt_f32(self, a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
         match self {}
     }
     fn gemm_f32_kernel(self, kc: usize, a: &[f32], b: &[f32], acc: &mut [[f32; GEMM_NR]; GEMM_MR]) {
@@ -241,6 +252,9 @@ pub fn add_i32(a: &[i32], b: &[i32], out: &mut [i32]) {
 /// Sum of all elements (order is implementation-defined). NaN propagates.
 pub fn reduce_sum_f32(a: &[f32]) -> f32 {
     let f = detect_features();
+    if let Some(t) = isa31(f) {
+        return t.reduce_sum_f32(a);
+    }
     if let Some(t) = isa300(f) {
         return t.reduce_sum_f32(a);
     }
@@ -289,6 +303,9 @@ pub fn reduce_min_f32(a: &[f32]) -> f32 {
 /// `None` if the slice is empty or all NaN.
 pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
     let f = detect_features();
+    if let Some(t) = isa31(f) {
+        return t.argmax_f32(a);
+    }
     if let Some(t) = vsx(f) {
         return t.argmax_f32(a);
     }
@@ -306,11 +323,14 @@ pub fn argmax_f32(a: &[f32]) -> Option<(usize, f32)> {
 }
 
 /// Indices of all `a[i] > threshold`, ascending; returns the count. NaN never
-/// matches. Portable code on every PowerPC so far.
+/// matches. `vextractwm` masks on POWER10+, portable code elsewhere.
 ///
 /// # Panics
 /// If `out.len() < a.len()`.
 pub fn compress_gt_f32(a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
+    if let Some(t) = isa31(detect_features()) {
+        return t.compress_gt_f32(a, threshold, out);
+    }
     assert!(out.len() >= a.len(), "out must hold a.len() indices");
     let mut n = 0;
     for (i, &x) in a.iter().enumerate() {
@@ -397,6 +417,9 @@ pub fn affine_u16_f32(q: &[u16], a: f32, b: f32, out: &mut [f32]) {
 /// If the lengths differ.
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     let f = detect_features();
+    if let Some(t) = isa31(f) {
+        return t.dot_f32(a, b);
+    }
     if let Some(t) = isa300(f) {
         return t.dot_f32(a, b);
     }

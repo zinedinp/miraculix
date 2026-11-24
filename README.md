@@ -45,7 +45,7 @@ All topics: [doc/](doc/README.md).
 | [AArch32](doc/platforms/aarch32.md) | ✓ | ✓ nightly | - | Neon, VFPv4, DSP (nightly) | - |
 | [RISC-V](doc/platforms/riscv.md) | ✓ | f32/i32 core | ✓ | `Rvv`, `Zvfh`, `Zvfbf*` | - |
 | [WebAssembly](doc/platforms/wasm.md) | host flags | ✓ | - | `Simd128`, `RelaxedSimd` | - |
-| [PowerPC](doc/platforms/powerpc.md) (consoles, G4/G5, POWER) | ✓ | ✓ VSX, VMX, paired singles | ✓ | `Vsx`, `Isa300`, `Mma`, `Vmx`, `PairedSingle`, `Vmx128` | - |
+| [PowerPC](doc/platforms/powerpc.md) (consoles, G4/G5, POWER) | ✓ | ✓ VSX, VMX, paired singles | ✓ | `Vsx`, `Isa300`, `Isa31`, `Mma`, `Vmx`, `PairedSingle`, `Vmx128` | - |
 | [LoongArch](doc/platforms/loongarch.md) | ✓ | - | - | - | - |
 
 Every target also gets [`prefetch`, `formats` and `mmio`](doc/modules.md).

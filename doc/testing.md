@@ -25,6 +25,11 @@ under an emulator or on matching hardware.
 | GameCube / Wii paired singles | Dolphin (no QEMU model has them) | `scripts/ps-probe` (nightly, run by hand) |
 | Xbox 360 VMX128 | none automatable | encodings only (host tests in `powerpc/ops/encode.rs`) |
 
+All QEMU rows the tests pin (aarch64 models and SVE lengths, the PowerPC
+models) run in one go with `scripts/qemu-test.sh [aarch64|powerpc]` on Linux or
+WSL; it sets `QEMU_CPU` and `MIRACULIX_EXPECT_POWER` so a model that lacks a
+feature fails instead of skipping.
+
 ## Oracles
 
 Format conversions are checked bit for bit against the reference
