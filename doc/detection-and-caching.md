@@ -37,8 +37,12 @@ A feature counts as present only if **both** are true:
 | Every AVX-512 extension, AVX10 | + opmask, ZMM (`0b1110_0110`) |
 | AMX | + tile config and data (bits 17, 18) |
 
-macOS enables AVX-512 state lazily (on the first AVX-512 instruction), so
-there CPUID decides for AVX-512 once AVX state is on. Linux additionally
+**Intel Macs** enable AVX-512 state lazily (on a thread's first AVX-512
+instruction), so `XCR0` cannot be trusted there. miraculix asks the kernel
+instead, like Go's runtime: AVX-512 counts only if AVX state is on,
+`hw.optional.avx512f` is 1, and the kernel is at least 21.3.0 (macOS 12.2;
+earlier kernels can corrupt the `k0..k7` mask registers on signal return).
+Under Rosetta 2 the kernel reports no AVX-512. Linux additionally
 needs `arch_prctl(ARCH_REQ_XCOMP_PERM)` before AMX instructions; miraculix
 has no AMX ops yet.
 

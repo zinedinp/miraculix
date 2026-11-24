@@ -203,12 +203,17 @@ struct CpuidLeaves {
     /// says the silicon has an instruction; without the matching XCR0 bits
     /// the OS has not enabled that state and the instruction raises `#UD`.
     xcr0: u64,
+    /// The OS saves and restores AVX-512 state (opmask, ZMM). From `XCR0`
+    /// everywhere except Apple, see [`os_avx512`].
+    os_avx512: bool,
 }
 
 /// `XCR0` bits 1 (SSE/XMM) and 2 (AVX/YMM upper halves).
 const XCR0_AVX: u64 = 0b110;
 /// `XCR0` bits 5 (opmask `k0..k7`), 6 (ZMM0-15 upper halves), 7 (ZMM16-31),
 /// on top of [`XCR0_AVX`].
+// Apple asks the kernel instead (see `os_avx512`), so only tests use it there.
+#[cfg_attr(all(target_vendor = "apple", not(test)), allow(dead_code))]
 const XCR0_AVX512: u64 = XCR0_AVX | 0b1110_0000;
 /// `XCR0` bits 17 (`XTILECFG`) and 18 (`XTILEDATA`).
 const XCR0_AMX: u64 = (1 << 17) | (1 << 18);
@@ -232,6 +237,89 @@ unsafe fn xgetbv0() -> u64 {
     (u64::from(hi) << 32) | u64::from(lo)
 }
 
+/// Does the OS save and restore AVX-512 state?
+///
+/// Everywhere but Apple: `XCR0` bits 5-7 (opmask, ZMM0-15 upper, ZMM16-31),
+/// on top of AVX state. Same rule as `std::is_x86_feature_detected!`.
+#[cfg(not(target_vendor = "apple"))]
+fn os_avx512(xcr0: u64) -> bool {
+    xcr0 & XCR0_AVX512 == XCR0_AVX512
+}
+
+/// Apple (Intel Macs): the kernel enables AVX-512 state **lazily**, so
+/// `XCR0` lacks bits 5-7 until a thread's first AVX-512 instruction traps
+/// and the kernel promotes it. `XCR0` would say "no" on every AVX-512 Mac.
+/// Instead, ask the kernels:
+///
+/// - AVX state must be on (`XCR0` bits 1-2),
+/// - `hw.optional.avx512f` = 1 (the kernel supports AVX-512 for user code;
+///   macOS before 10.13 does not, and Rosetta 2 reports 0), and
+/// - kernel >= 21.3.0 (macOS 12.2): Darwin 19.6.0 to 21.2.0 can corrupt the
+///   opmask registers `k0..k7` on signal return.
+#[cfg(target_vendor = "apple")]
+fn os_avx512(xcr0: u64) -> bool {
+    xcr0 & XCR0_AVX == XCR0_AVX
+        && darwin::sysctl_bool(c"hw.optional.avx512f")
+        && darwin::kernel_at_least(21, 3, 0)
+}
+
+#[cfg(target_vendor = "apple")]
+mod darwin {
+    use core::ffi::{CStr, c_char, c_int, c_void};
+
+    // libSystem is linked into every Apple binary.
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+
+    /// Integer sysctl; a missing name or 0 reads as `false` (fail closed).
+    pub(super) fn sysctl_bool(name: &CStr) -> bool {
+        let mut value: c_int = 0;
+        let mut len = core::mem::size_of::<c_int>();
+        // SAFETY: NUL-terminated name; `value`/`len` describe a `c_int` buffer.
+        let ret = unsafe {
+            sysctlbyname(name.as_ptr(), (&raw mut value).cast(), &mut len, core::ptr::null_mut(), 0)
+        };
+        ret == 0 && value != 0
+    }
+
+    /// `kern.osrelease` ("21.3.0") is at least `major.minor.patch`. Any
+    /// error or unexpected format reads as `false` (fail closed).
+    pub(super) fn kernel_at_least(major: u32, minor: u32, patch: u32) -> bool {
+        let mut buf = [0u8; 64];
+        let mut len = buf.len();
+        // SAFETY: NUL-terminated name; `buf`/`len` describe a writable buffer.
+        let ret = unsafe {
+            sysctlbyname(
+                c"kern.osrelease".as_ptr(),
+                buf.as_mut_ptr().cast(),
+                &mut len,
+                core::ptr::null_mut(),
+                0,
+            )
+        };
+        if ret != 0 {
+            return false;
+        }
+        parse_release(&buf[..len.min(buf.len())]).is_some_and(|v| v >= (major, minor, patch))
+    }
+
+    /// `"21.3.0\0"` -> `(21, 3, 0)`. Exactly three numeric parts.
+    pub(super) fn parse_release(bytes: &[u8]) -> Option<(u32, u32, u32)> {
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        let s = core::str::from_utf8(&bytes[..end]).ok()?;
+        let mut parts = s.split('.').map(|p| p.parse::<u32>().ok());
+        let v = (parts.next()??, parts.next()??, parts.next()??);
+        parts.next().is_none().then_some(v)
+    }
+}
+
 impl CpuidLeaves {
     fn read() -> Self {
         // Our own reader instead of `CpuId::new()`: raw-cpuid only provides
@@ -245,14 +333,16 @@ impl CpuidLeaves {
         let feature_info = cpuid.get_feature_info();
         let (leaf7_sub1, sha_sm_leaf_eax) = Self::read_leaf7_sub1();
         let os_xsave = feature_info.as_ref().is_some_and(FeatureInfo::has_oxsave);
+        // SAFETY: OSXSAVE set means the OS enabled XGETBV (CR4.OSXSAVE).
+        let xcr0 = if os_xsave { unsafe { xgetbv0() } } else { 0 };
         Self {
             feature_info,
             extended_features: cpuid.get_extended_feature_info(),
             extended_processor: cpuid.get_extended_processor_and_feature_identifiers(),
             sha_sm_leaf_eax,
             leaf7_sub1,
-            // SAFETY: OSXSAVE set means the OS enabled XGETBV (CR4.OSXSAVE).
-            xcr0: if os_xsave { unsafe { xgetbv0() } } else { 0 },
+            xcr0,
+            os_avx512: os_avx512(xcr0),
         }
     }
 
@@ -314,17 +404,7 @@ impl CpuidLeaves {
             | Feature::Avx512bf16
             | Feature::Avx512vp2intersect
             | Feature::Avx512fp16
-            | Feature::Avx10 => {
-                // macOS enables AVX-512 state lazily: XCR0 lacks the bits
-                // until the first AVX-512 instruction traps, and the kernel
-                // then turns them on for the thread. CPUID is the authority
-                // there, as long as AVX state itself is on.
-                if cfg!(target_vendor = "apple") {
-                    XCR0_AVX
-                } else {
-                    XCR0_AVX512
-                }
-            }
+            | Feature::Avx10 => return self.os_avx512,
             // Linux also requires `arch_prctl(ARCH_REQ_XCOMP_PERM)` before
             // the first tile instruction; this crate has no AMX ops yet.
             Feature::AmxTile | Feature::AmxInt8 | Feature::AmxBf16 => XCR0_AMX,
@@ -679,6 +759,7 @@ mod os_state_tests {
             sha_sm_leaf_eax: 0,
             leaf7_sub1: false,
             xcr0,
+            os_avx512: os_avx512(xcr0),
         }
     }
 
@@ -703,8 +784,11 @@ mod os_state_tests {
         let l = leaves(XCR0_AVX);
         assert!(l.os_enables(Feature::Avx2));
         assert!(l.os_enables(Feature::Vaes));
-        assert_eq!(l.os_enables(Feature::Avx512f), cfg!(target_vendor = "apple"));
-        assert!(leaves(XCR0_AVX512).os_enables(Feature::Avx512bw));
+        if !cfg!(target_vendor = "apple") {
+            // Apple asks the kernel instead of XCR0 (see `os_avx512`).
+            assert!(!l.os_enables(Feature::Avx512f));
+            assert!(leaves(XCR0_AVX512).os_enables(Feature::Avx512bw));
+        }
         assert!(!leaves(XCR0_AVX512).os_enables(Feature::AmxInt8));
         assert!(leaves(XCR0_AVX512 | XCR0_AMX).os_enables(Feature::AmxInt8));
     }
@@ -750,4 +834,19 @@ fn has_cpuid() -> bool {
         );
     }
     (before ^ after) & 0x0020_0000 != 0
+}
+
+#[cfg(all(test, target_vendor = "apple"))]
+mod darwin_tests {
+    use super::darwin::parse_release;
+
+    #[test]
+    fn parses_kernel_release_strings() {
+        assert_eq!(parse_release(b"21.3.0\0"), Some((21, 3, 0)));
+        assert_eq!(parse_release(b"24.1.0"), Some((24, 1, 0)));
+        assert_eq!(parse_release(b"21.3"), None);
+        assert_eq!(parse_release(b"21.3.0.1"), None);
+        assert_eq!(parse_release(b"x.3.0"), None);
+        assert!((21, 2, 9) < (21, 3, 0) && (22, 0, 0) > (21, 3, 0));
+    }
 }
