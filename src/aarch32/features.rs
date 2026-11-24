@@ -284,36 +284,19 @@ impl FeatureSet {
     }
 }
 
-/// Process-wide cache for one full [`FeatureSet`] probe (128 bits). Same
-/// split-`AtomicU64` halves behind an `AtomicBool` as x86 (no stable
-/// `AtomicU128`); keeps `auto_up` from re-reading `auxv` every call.
-pub(crate) struct CachedFeatureSet {
-    filled: core::sync::atomic::AtomicBool,
-    lo: core::sync::atomic::AtomicU64,
-    hi: core::sync::atomic::AtomicU64,
-}
+/// Process-wide cache for one full [`FeatureSet`] probe. Thin wrapper over
+/// [`crate::level_cache::CachedU128`], shared by every arch that keeps a
+/// 128-bit feature set.
+pub(crate) struct CachedFeatureSet(crate::level_cache::CachedU128);
 
 impl CachedFeatureSet {
     pub(crate) const fn new() -> Self {
-        Self {
-            filled: core::sync::atomic::AtomicBool::new(false),
-            lo: core::sync::atomic::AtomicU64::new(0),
-            hi: core::sync::atomic::AtomicU64::new(0),
-        }
+        Self(crate::level_cache::CachedU128::new())
     }
 
     /// Cached value, or run `init` once (races may double-init; same CPU => same set).
+    #[inline]
     pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
-        use core::sync::atomic::Ordering;
-        if self.filled.load(Ordering::Acquire) {
-            let bits = (self.hi.load(Ordering::Relaxed) as u128) << 64
-                | self.lo.load(Ordering::Relaxed) as u128;
-            return FeatureSet(bits);
-        }
-        let computed = init();
-        self.lo.store(computed.0 as u64, Ordering::Relaxed);
-        self.hi.store((computed.0 >> 64) as u64, Ordering::Relaxed);
-        self.filled.store(true, Ordering::Release);
-        computed
+        FeatureSet(self.0.get_or_init(|| init().0))
     }
 }

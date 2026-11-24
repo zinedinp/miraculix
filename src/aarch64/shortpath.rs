@@ -417,7 +417,7 @@ pub fn verify_or_panic() {
         target_os = "linux",
         target_os = "android",
         target_os = "freebsd",
-        target_os = "macos",
+        target_vendor = "apple",
         target_os = "windows"
     )))]
     {
@@ -427,7 +427,7 @@ pub fn verify_or_panic() {
         target_os = "linux",
         target_os = "android",
         target_os = "freebsd",
-        target_os = "macos",
+        target_vendor = "apple",
         target_os = "windows"
     ))]
     if let ResolvedPath::Assumed(level) = resolve() {

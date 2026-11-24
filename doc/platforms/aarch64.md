@@ -4,7 +4,8 @@
 behind x86; SME is detect-only.
 
 **Probe:** `getauxval` (Linux, Android), `elf_aux_info` (FreeBSD),
-`sysctlbyname` (macOS), `IsProcessorFeaturePresent` (Windows), compile-time
+`sysctlbyname` (macOS, iOS, tvOS, visionOS), `IsProcessorFeaturePresent`
+(Windows; FP16, I8MM, BF16, SHA3/512 and the SVE family included), compile-time
 features elsewhere. Always unioned with the compile-time features.
 
 ## Detect
@@ -12,7 +13,7 @@ features elsewhere. Always unioned with the compile-time features.
 | Item | Role |
 |---|---|
 | `detect_features() -> FeatureSet` | every extension bit, cached |
-| `detect_level()` | `ArmLevel` (`V8_0..V9_5`); `AppleLevel` on macOS; `SnapdragonLevel` on Windows |
+| `detect_level()` | `ArmLevel` (`V8_0..V9_5`, also iOS); `AppleLevel` on macOS; `SnapdragonLevel` on Windows |
 | `warm_up()`, `detect_*_fresh()`, `shortpath::verify_or_panic()` | as on x86 ([caching](../detection-and-caching.md)) |
 
 Because `detect_level()`'s type changes with the OS, portable code should

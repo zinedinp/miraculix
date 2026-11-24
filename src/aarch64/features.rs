@@ -467,7 +467,7 @@ impl AuxVal {
 
 /// macOS detect: one `sysctlbyname` per feature (no getauxval/bulk HWCAP).
 /// Names from M1 Pro `sysctl -a` + Go `cpu_arm64_darwin.go` (XNU table closed).
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 mod apple {
     use super::Feature;
     use core::ffi::{CStr, c_void};
@@ -504,7 +504,9 @@ mod apple {
 			// Legacy name only (not under FEAT_*); present on M1 Pro.
 			Feature::Crc32 => sysctl_bool(c"hw.optional.armv8_crc32"),
 			Feature::Lse => sysctl_bool(c"hw.optional.arm.FEAT_LSE"),
-			Feature::Fp16 => sysctl_bool(c"hw.optional.arm.FEAT_FP16"),
+			// FEAT_FP16 is half precision for scalar FP **and** AdvSIMD, so it
+			// proves both bits Linux reports separately (FPHP, ASIMDHP).
+			Feature::Fp16 | Feature::AsimdHp => sysctl_bool(c"hw.optional.arm.FEAT_FP16"),
 			Feature::Rdm => sysctl_bool(c"hw.optional.arm.FEAT_RDM"),
 			Feature::Jscvt => sysctl_bool(c"hw.optional.arm.FEAT_JSCVT"),
 			Feature::Fcma => sysctl_bool(c"hw.optional.arm.FEAT_FCMA"),
@@ -524,12 +526,30 @@ mod apple {
 			Feature::Bf16 => sysctl_bool(c"hw.optional.arm.FEAT_BF16"),
 			Feature::Bti => sysctl_bool(c"hw.optional.arm.FEAT_BTI"),
 			Feature::Ecv => sysctl_bool(c"hw.optional.arm.FEAT_ECV"),
+			// Names as in Rust's std_detect (`os/darwin/aarch64.rs`). A name the
+			// kernel does not know reads as 0, so these fail closed on older OSes.
+			Feature::Afp => sysctl_bool(c"hw.optional.arm.FEAT_AFP"),
+			Feature::Rpres => sysctl_bool(c"hw.optional.arm.FEAT_RPRES"),
+			Feature::Wfxt => sysctl_bool(c"hw.optional.arm.FEAT_WFxT"),
+			Feature::Ebf16 => sysctl_bool(c"hw.optional.arm.FEAT_EBF16"),
+			Feature::Cssc => sysctl_bool(c"hw.optional.arm.FEAT_CSSC"),
+			Feature::Hbc => sysctl_bool(c"hw.optional.arm.FEAT_HBC"),
+			Feature::Sme => sysctl_bool(c"hw.optional.arm.FEAT_SME"),
+			Feature::Sme2 => sysctl_bool(c"hw.optional.arm.FEAT_SME2"),
+			Feature::Sme2p1 => sysctl_bool(c"hw.optional.arm.FEAT_SME2p1"),
+			Feature::SmeB16b16 => sysctl_bool(c"hw.optional.arm.FEAT_SME_B16B16"),
+			Feature::SmeF16f16 => sysctl_bool(c"hw.optional.arm.FEAT_SME_F16F16"),
+			Feature::SmeF64f64 => sysctl_bool(c"hw.optional.arm.FEAT_SME_F64F64"),
+			Feature::SmeI16i64 => sysctl_bool(c"hw.optional.arm.FEAT_SME_I16I64"),
+			Feature::SmeB16f32 => sysctl_bool(c"hw.optional.arm.SME_B16F32"),
+			Feature::SmeF16f32 => sysctl_bool(c"hw.optional.arm.SME_F16F32"),
+			Feature::SmeF32f32 => sysctl_bool(c"hw.optional.arm.SME_F32F32"),
+			Feature::SmeI8i32 => sysctl_bool(c"hw.optional.arm.SME_I8I32"),
 			// One FEAT_PAuth for both PACA/PACG (Linux has two HWCAP bits).
 			Feature::Paca | Feature::Pacg => sysctl_bool(c"hw.optional.arm.FEAT_PAuth"),
 
 			// No known Apple sysctl (EL0-irrelevant, or no SVE/SME/MTE; AMX instead).
 			Feature::Evtstrm
-			| Feature::AsimdHp
 			| Feature::CpuidReg
 			| Feature::Sm3
 			| Feature::Sm4
@@ -538,11 +558,7 @@ mod apple {
 			| Feature::Dgh
 			| Feature::Rng
 			| Feature::Mte
-			| Feature::Afp
-			| Feature::Rpres
 			| Feature::Mte3
-			| Feature::Wfxt
-			| Feature::Ebf16
 			| Feature::Sve2
 			| Feature::Sve2Aes
 			| Feature::Sve2Pmull
@@ -554,26 +570,13 @@ mod apple {
 			| Feature::Sve2F64mm
 			| Feature::Sve2Bf16
 			| Feature::SveEbf16
-			| Feature::Sme
-			| Feature::SmeI16i64
-			| Feature::SmeF64f64
-			| Feature::SmeI8i32
-			| Feature::SmeF16f32
-			| Feature::SmeB16f32
-			| Feature::SmeF32f32
 			| Feature::SmeFa64
 			// Stage 2.1 bits: no sysctl name mapped yet (M4 exposes SME/SME2
 			// under `hw.optional.arm.FEAT_SME*`, not wired up here - SME is
 			// detect-only on every OS for now). Fail-closed.
-				| Feature::Cssc
 				| Feature::Rprfm
 				| Feature::Sve2p1
-				| Feature::Sme2
-				| Feature::Sme2p1
-				| Feature::SmeB16b16
-				| Feature::SmeF16f16
 				| Feature::Mops
-				| Feature::Hbc
 				| Feature::SveB16b16
 				| Feature::Lrcpc3
 				| Feature::Lse128
@@ -609,6 +612,27 @@ mod windows {
         PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE,
     };
 
+    // IDs added in WinSDK 10.0.26100 and not yet in `windows-sys`. Values
+    // and the feature each one proves are copied from Rust's own
+    // `std_detect` (`os/windows/aarch64.rs`); IDs std leaves commented out
+    // (SVE I8MM, SVE BF16) stay unmapped here too, so those bits fail closed.
+    const PF_ARM_SVE_INSTRUCTIONS_AVAILABLE: u32 = 46;
+    const PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE: u32 = 47;
+    const PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE: u32 = 48;
+    const PF_ARM_SVE_AES_INSTRUCTIONS_AVAILABLE: u32 = 49;
+    const PF_ARM_SVE_PMULL128_INSTRUCTIONS_AVAILABLE: u32 = 50;
+    const PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE: u32 = 51;
+    const PF_ARM_SVE_B16B16_INSTRUCTIONS_AVAILABLE: u32 = 54;
+    const PF_ARM_SVE_SHA3_INSTRUCTIONS_AVAILABLE: u32 = 55;
+    const PF_ARM_SVE_SM4_INSTRUCTIONS_AVAILABLE: u32 = 56;
+    const PF_ARM_SVE_F32MM_INSTRUCTIONS_AVAILABLE: u32 = 58;
+    const PF_ARM_SVE_F64MM_INSTRUCTIONS_AVAILABLE: u32 = 59;
+    const PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE: u32 = 64;
+    const PF_ARM_SHA512_INSTRUCTIONS_AVAILABLE: u32 = 65;
+    const PF_ARM_V82_I8MM_INSTRUCTIONS_AVAILABLE: u32 = 66;
+    const PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE: u32 = 67;
+    const PF_ARM_V86_BF16_INSTRUCTIONS_AVAILABLE: u32 = 68;
+
     fn pf(id: u32) -> bool {
         // SAFETY: `id` is a `PROCESSOR_FEATURE_ID`; the call touches no memory of ours.
         unsafe { IsProcessorFeaturePresent(id) != 0 }
@@ -630,22 +654,38 @@ mod windows {
 			Feature::Jscvt => pf(PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE),
 			Feature::Rcpc => pf(PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE),
 
-			// No PF_ARM_* ID in windows-sys 0.61.2: absent from the API
-			// entirely (PAC, RDM, FlagM, ...) or added in WinSDK 10.0.26100
-			// and not yet in the crate (LSE2, SHA3, SHA512, I8MM, BF16,
-			// SVE(2), SME family).
+			// FEAT_FP16 is half precision for scalar FP **and** AdvSIMD, so it
+			// proves both bits Linux reports separately (FPHP, ASIMDHP).
+			Feature::Fp16 | Feature::AsimdHp => pf(PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE),
+			Feature::I8mm => pf(PF_ARM_V82_I8MM_INSTRUCTIONS_AVAILABLE),
+			Feature::Bf16 => pf(PF_ARM_V86_BF16_INSTRUCTIONS_AVAILABLE),
+			Feature::Sha3 => pf(PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE),
+			Feature::Sha512 => pf(PF_ARM_SHA512_INSTRUCTIONS_AVAILABLE),
+			// No PF_ARM_RDM ID exists. DotProd is an optional v8.2 feature, so a
+			// core with it implements at least v8.1, and v8.1 with AdvSIMD
+			// mandates FEAT_RDM (Arm ARM K.a D17.2.91). Same inference as
+			// Rust's std_detect and .NET 10.
+			Feature::Rdm => pf(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve => pf(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2 => pf(PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2p1 => pf(PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2Aes => pf(PF_ARM_SVE_AES_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2Pmull => pf(PF_ARM_SVE_PMULL128_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2Bitperm => pf(PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE),
+			Feature::SveB16b16 => pf(PF_ARM_SVE_B16B16_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2Sha3 => pf(PF_ARM_SVE_SHA3_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2Sm4 => pf(PF_ARM_SVE_SM4_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2F32mm => pf(PF_ARM_SVE_F32MM_INSTRUCTIONS_AVAILABLE),
+			Feature::Sve2F64mm => pf(PF_ARM_SVE_F64MM_INSTRUCTIONS_AVAILABLE),
+
+			// No PF_ARM_* ID at all (PAC, FlagM, ...), or one std_detect does not
+			// map either (SVE I8MM / BF16, the SME family). Fail-closed.
 			Feature::Evtstrm
-			| Feature::AsimdHp
 			| Feature::CpuidReg
-			| Feature::Fp16
-			| Feature::Rdm
 			| Feature::Fcma
 			| Feature::Dcpop
-			| Feature::Sha3
 			| Feature::Sm3
 			| Feature::Sm4
-			| Feature::Sha512
-			| Feature::Sve
 			| Feature::Fhm
 			| Feature::Dit
 			| Feature::Uscat
@@ -656,20 +696,10 @@ mod windows {
 			| Feature::Paca
 			| Feature::Pacg
 			| Feature::Dcpodp
-			| Feature::Sve2
-			| Feature::Sve2Aes
-			| Feature::Sve2Pmull
-			| Feature::Sve2Bitperm
-			| Feature::Sve2Sha3
-			| Feature::Sve2Sm4
 			| Feature::Flagm2
 			| Feature::Frint
 			| Feature::Sve2I8mm
-			| Feature::Sve2F32mm
-			| Feature::Sve2F64mm
 			| Feature::Sve2Bf16
-			| Feature::I8mm
-			| Feature::Bf16
 			| Feature::Dgh
 			| Feature::Rng
 			| Feature::Bti
@@ -692,14 +722,12 @@ mod windows {
 			// Stage 2.1 bits: no `PF_ARM_*` ID in windows-sys 0.61.2. Fail-closed.
 				| Feature::Cssc
 				| Feature::Rprfm
-				| Feature::Sve2p1
 				| Feature::Sme2
 				| Feature::Sme2p1
 				| Feature::SmeB16b16
 				| Feature::SmeF16f16
 				| Feature::Mops
 				| Feature::Hbc
-				| Feature::SveB16b16
 				| Feature::Lrcpc3
 				| Feature::Lse128
 				| Feature::Fpmr
@@ -739,7 +767,7 @@ impl FeatureSet {
                 }
             }
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(target_vendor = "apple")]
         {
             for &feature in Feature::ALL {
                 if apple::supports(feature) {
@@ -761,7 +789,7 @@ impl FeatureSet {
             target_os = "linux",
             target_os = "android",
             target_os = "freebsd",
-            target_os = "macos",
+            target_vendor = "apple",
             target_os = "windows"
         )))]
         {
@@ -791,39 +819,19 @@ impl FeatureSet {
     }
 }
 
-/// Process-wide cache for one full [`FeatureSet`] probe (128 bits). No stable
-/// `AtomicU128` on `core`, so the bitset is split into two `AtomicU64` halves
-/// behind an `AtomicBool` filled-flag (`Acquire`/`Release` pair) rather than
-/// [`crate::level_cache::CachedU8`]'s single-sentinel-byte trick. `no_std`-safe:
-/// `core::sync::atomic` only. Same "parallel first callers may both probe;
-/// same CPU => same result, harmless" contract as `CachedU8`.
-pub(crate) struct CachedFeatureSet {
-    filled: core::sync::atomic::AtomicBool,
-    lo: core::sync::atomic::AtomicU64,
-    hi: core::sync::atomic::AtomicU64,
-}
+/// Process-wide cache for one full [`FeatureSet`] probe. Thin wrapper over
+/// [`crate::level_cache::CachedU128`], shared by every arch that keeps a
+/// 128-bit feature set.
+pub(crate) struct CachedFeatureSet(crate::level_cache::CachedU128);
 
 impl CachedFeatureSet {
     pub(crate) const fn new() -> Self {
-        Self {
-            filled: core::sync::atomic::AtomicBool::new(false),
-            lo: core::sync::atomic::AtomicU64::new(0),
-            hi: core::sync::atomic::AtomicU64::new(0),
-        }
+        Self(crate::level_cache::CachedU128::new())
     }
 
     /// Cached value, or run `init` once (races may double-init; same CPU => same set).
+    #[inline]
     pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
-        use core::sync::atomic::Ordering;
-        if self.filled.load(Ordering::Acquire) {
-            let bits = (self.hi.load(Ordering::Relaxed) as u128) << 64
-                | self.lo.load(Ordering::Relaxed) as u128;
-            return FeatureSet(bits);
-        }
-        let computed = init();
-        self.lo.store(computed.0 as u64, Ordering::Relaxed);
-        self.hi.store((computed.0 >> 64) as u64, Ordering::Relaxed);
-        self.filled.store(true, Ordering::Release);
-        computed
+        FeatureSet(self.0.get_or_init(|| init().0))
     }
 }

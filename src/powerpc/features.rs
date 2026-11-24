@@ -137,6 +137,13 @@ impl FeatureSet {
 
         #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "freebsd")))]
         {
+            Self::compile_time()
+        }
+    }
+
+    /// Bits the compile flags guarantee (`-C target-feature`, `target-cpu`).
+    pub(crate) fn compile_time() -> Self {
+        {
             #[allow(unused_mut, reason = "mutated under target_feature cfgs")]
             let mut set = 0u128;
             #[cfg(target_feature = "altivec")]
@@ -153,11 +160,33 @@ impl FeatureSet {
         }
     }
 
+    /// Features present in **either** set (bitwise OR).
+    pub fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
     pub fn contains(self, feature: Feature) -> bool {
         self.0 & (1 << feature.bit()) != 0
     }
 
     pub fn contains_all(self, required: &[Feature]) -> bool {
         required.iter().all(|&f| self.contains(f))
+    }
+}
+
+/// Process-wide cache for one full [`FeatureSet`] probe. Thin wrapper over
+/// [`crate::level_cache::CachedU128`], shared by every arch that keeps a
+/// 128-bit feature set.
+pub(crate) struct CachedFeatureSet(crate::level_cache::CachedU128);
+
+impl CachedFeatureSet {
+    pub(crate) const fn new() -> Self {
+        Self(crate::level_cache::CachedU128::new())
+    }
+
+    /// Cached value, or run `init` once (races may double-init; same CPU => same set).
+    #[inline]
+    pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
+        FeatureSet(self.0.get_or_init(|| init().0))
     }
 }

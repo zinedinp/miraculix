@@ -23,8 +23,8 @@ Then, inside hot loops, branch on a token you already hold and call a
 A feature counts as present only if **both** are true:
 
 1. **The CPU has it.** x86: `CPUID`. Arm, RISC-V, LoongArch, PowerPC: the
-   OS's view of the hardware (`getauxval`, `elf_aux_info`, `sysctlbyname`,
-   `IsProcessorFeaturePresent`, `riscv_hwprobe`).
+   OS's view of the hardware (`getauxval`, `elf_aux_info`, `sysctlbyname` on
+   every Apple OS, `IsProcessorFeaturePresent`, `riscv_hwprobe`).
 2. **The OS has enabled it.** On x86 this is the `XCR0` register (read with
    `XGETBV`). A CPU can report AVX-512 while the OS (or a VM) has left the
    wide register state off; the instructions then fault. miraculix checks
@@ -136,6 +136,7 @@ For element-wise work, branch on the token outside the loop and run a
 | AArch64 | `Token::from_features(detect_features())` | token methods |
 | AArch64 | `Neon::detect()` | `reduce::*_with(neon, ..)` (`None` = portable path) |
 | RISC-V | `Rvv::from_features(detect_features())` | `Rvv` methods |
+| PowerPC | `Altivec::from_features(detect_features())` | `Altivec` methods |
 | wasm | `Simd128::from_features(detect_features())` | token methods |
 
 A `reduce::Tier` and a `Neon` token can only come from detection, so the
@@ -152,11 +153,11 @@ A `reduce::Tier` and a `Neon` token can only come from detection, so the
 
 Two things to know about `detect_level()`:
 
-- In a `-C target-cpu=...` build it returns the **compiled-in** level without
-  probing, so it can report less than the host has.
-- On AArch64 its type depends on the OS: `ArmLevel` (Linux, Android, BSD),
-  `AppleLevel` (macOS), `SnapdragonLevel` (Windows). Portable code should
-  gate on `detect_features()` and tokens instead.
+- In a `-C target-cpu=...` build the compiled-in level is a **floor**: the
+  result is the higher of that and what the host reports.
+- On AArch64 its type depends on the OS: `ArmLevel` (Linux, Android, BSD,
+  iOS), `AppleLevel` (macOS), `SnapdragonLevel` (Windows). Portable code
+  should gate on `detect_features()` and tokens instead.
 
 ## Fresh probes
 

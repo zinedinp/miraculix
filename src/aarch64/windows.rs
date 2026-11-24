@@ -1,7 +1,7 @@
 //! Windows on Arm tiers + shortpath (Snapdragon / Oryon). Not [`super::ArmLevel`]:
-//! no `PF_ARM_*` for RDM, so ArmLevel sticks at V8_0. `Base` = NEON floor;
-//! `XElite` = all windows probe can prove. Shortpath key: `target_feature=sm4`
-//! (only `oryon-1` among listed aarch64 target-cpus).
+//! Windows reports too few features to place a CPU on the v8.x ladder.
+//! `Base` = NEON floor; `XElite` = the Snapdragon X feature set. Shortpath:
+//! a build that enables every `XElite` feature (e.g. `-C target-cpu=oryon-1`).
 
 use super::features::{Feature, FeatureSet};
 use crate::level_cache::CachedU8;
@@ -51,10 +51,29 @@ impl SnapdragonLevel {
     }
 }
 
-#[cfg(target_feature = "sm4")]
+// Assumed only when the build enables every feature `XElite` requires
+// (`-C target-cpu=oryon-1` does), not on one marker feature: a build with
+// just `+sm4` must not skip the runtime probe for the rest.
+#[cfg(all(
+    target_feature = "aes",
+    target_feature = "sha2",
+    target_feature = "crc",
+    target_feature = "lse",
+    target_feature = "dotprod",
+    target_feature = "jsconv",
+    target_feature = "rcpc"
+))]
 const COMPILE_TIME_LEVEL: SnapdragonLevel = SnapdragonLevel::XElite;
 
-#[cfg(not(target_feature = "sm4"))]
+#[cfg(not(all(
+    target_feature = "aes",
+    target_feature = "sha2",
+    target_feature = "crc",
+    target_feature = "lse",
+    target_feature = "dotprod",
+    target_feature = "jsconv",
+    target_feature = "rcpc"
+)))]
 const COMPILE_TIME_LEVEL: SnapdragonLevel = SnapdragonLevel::Base;
 
 /// Assumed above `Base` vs still need runtime `IsProcessorFeaturePresent`.
@@ -93,7 +112,11 @@ pub fn detect_level() -> SnapdragonLevel {
 /// Always shortpath or WinAPI now; ignores process cache.
 pub fn detect_level_fresh() -> SnapdragonLevel {
     match resolve() {
-        ResolvedPath::Assumed(level) => level,
+        ResolvedPath::Assumed(level) => {
+            // Compile flags are a floor, not a ceiling: the host may run higher.
+            let host = SnapdragonLevel::detect(FeatureSet::detect());
+            if host > level { host } else { level }
+        }
         ResolvedPath::Baseline => SnapdragonLevel::detect(FeatureSet::detect()),
     }
 }

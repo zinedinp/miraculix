@@ -130,7 +130,11 @@ pub fn detect_level() -> GenericLevel {
 /// Prefer [`detect_level`] in hot paths.
 pub fn detect_level_fresh() -> GenericLevel {
     match shortpath::resolve() {
-        shortpath::ResolvedPath::Assumed(level) => level,
+        shortpath::ResolvedPath::Assumed(level) => {
+            // Compile flags are a floor, not a ceiling: the host may run higher.
+            let host = GenericLevel::detect(FeatureSet::detect());
+            if host > level { host } else { level }
+        }
         shortpath::ResolvedPath::RuntimeDispatch => GenericLevel::detect(FeatureSet::detect()),
     }
 }

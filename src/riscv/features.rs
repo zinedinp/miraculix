@@ -1,6 +1,7 @@
 //! RISC-V base ISA (M/A/F/D/C/V). Auxv or compile-time cfg. [`hwcap`] restates
 //! `COMPAT_HWCAP_ISA_*` (UAPI bit is letter minus `'A'`). No Feature::I (always
-//! implied). Z* / vector-crypto need `riscv_hwprobe(2)` (not here).
+//! implied). `Zvfh` / `Zvfbfmin` / `Zvfbfwma` come from `riscv_hwprobe(2)`
+//! (Linux, Android).
 
 /// `unsigned long`: u32 on RV32, u64 on RV64.
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
@@ -90,9 +91,10 @@ mod ext0 {
 }
 
 /// `riscv_hwprobe(2)` for one key (`RISCV_HWPROBE_KEY_*`). `None` if the kernel
-/// lacks the syscall or does not know the key. Linux on RISC-V only.
+/// lacks the syscall or does not know the key. Linux and Android (same kernel
+/// syscall) on RISC-V only.
 #[cfg(all(
-    target_os = "linux",
+    any(target_os = "linux", target_os = "android"),
     any(target_arch = "riscv32", target_arch = "riscv64")
 ))]
 pub(super) fn hwprobe(key: i64) -> Option<u64> {
@@ -114,7 +116,7 @@ pub(super) fn hwprobe(key: i64) -> Option<u64> {
 }
 
 #[cfg(not(all(
-    target_os = "linux",
+    any(target_os = "linux", target_os = "android"),
     any(target_arch = "riscv32", target_arch = "riscv64")
 )))]
 pub(super) fn hwprobe(_key: i64) -> Option<u64> {
@@ -192,7 +194,28 @@ impl FeatureSet {
         }
         #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "freebsd")))]
         {
-            // gc floor is usual for riscv*gc; still only set bits proven by cfg.
+            // Many none-elf targets enable m/a/f/d/c in the base ISA string without
+            // exposing every letter as target_feature; assume gc floor when no
+            // letter fired but we are on a typical imac/gc-style target.
+            let set = Self::compile_time();
+            if set.0 == 0 {
+                return Self(
+                    1 << Feature::M.bit()
+                        | 1 << Feature::A.bit()
+                        | 1 << Feature::F.bit()
+                        | 1 << Feature::D.bit()
+                        | 1 << Feature::C.bit(),
+                );
+            }
+            set
+        }
+    }
+
+    /// Bits the compile flags guarantee (`-C target-feature`, `target-cpu`).
+    /// [`crate::riscv::detect_features`] unions these with the runtime probe,
+    /// so a `+v` build dispatches to RVV without a runtime branch miss.
+    pub(crate) fn compile_time() -> Self {
+        {
             #[allow(unused_mut, reason = "mutated under target_feature cfgs")]
             let mut set = 0u128;
             #[cfg(target_feature = "m")]
@@ -231,27 +254,13 @@ impl FeatureSet {
             {
                 set |= 1 << Feature::Zvfbfwma.bit();
             }
-            // Many none-elf targets enable m/a/f/d/c in the base ISA string without
-            // exposing every letter as target_feature; assume gc floor when none
-            // of the above fired but we are on a typical imac/gc-style target.
-            if set == 0 {
-                set |= 1 << Feature::M.bit();
-                set |= 1 << Feature::A.bit();
-                set |= 1 << Feature::F.bit();
-                set |= 1 << Feature::D.bit();
-                set |= 1 << Feature::C.bit();
-            }
             Self(set)
         }
     }
 
-    /// Raw bits (one per [`Feature::ALL`] entry). Fits `u32`.
-    pub(super) fn bits(self) -> u32 {
-        self.0 as u32
-    }
-
-    pub(super) fn from_bits(bits: u32) -> Self {
-        Self(bits as u128)
+    /// Features present in **either** set (bitwise OR).
+    pub fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
     }
 
     pub fn contains(self, feature: Feature) -> bool {
@@ -260,5 +269,22 @@ impl FeatureSet {
 
     pub fn contains_all(self, required: &[Feature]) -> bool {
         required.iter().all(|&f| self.contains(f))
+    }
+}
+
+/// Process-wide cache for one full [`FeatureSet`] probe. Thin wrapper over
+/// [`crate::level_cache::CachedU128`], shared by every arch that keeps a
+/// 128-bit feature set.
+pub(crate) struct CachedFeatureSet(crate::level_cache::CachedU128);
+
+impl CachedFeatureSet {
+    pub(crate) const fn new() -> Self {
+        Self(crate::level_cache::CachedU128::new())
+    }
+
+    /// Cached value, or run `init` once (races may double-init; same CPU => same set).
+    #[inline]
+    pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
+        FeatureSet(self.0.get_or_init(|| init().0))
     }
 }

@@ -1,6 +1,6 @@
 //! RISC-V RV32/RV64: [`features`] (M/A/F/D/C/V), [`tiers`] [`RiscvLevel`],
 //! [`shortpath`]. Auxv on Linux/Android/FreeBSD; compile-time elsewhere. One
-//! module both widths. Finer ISA needs `riscv_hwprobe(2)` (not here).
+//! module both widths. `riscv_hwprobe(2)` (Linux, Android) adds the `Zv*` bits.
 
 use crate::level_cache::CachedU8;
 
@@ -15,21 +15,22 @@ pub use features::{Feature, FeatureSet};
 pub use tiers::RiscvLevel;
 
 static CACHED_LEVEL: CachedU8 = CachedU8::new();
-static CACHED_FEATURES: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
-/// All detected features, cached after the first call (bit 31 marks "filled";
-/// there are far fewer than 31 features). Prefer over [`FeatureSet::detect`],
-/// which re-reads auxv and `riscv_hwprobe` every time.
+static CACHED_FEATURES: features::CachedFeatureSet = features::CachedFeatureSet::new();
+
+/// Every detected feature bit for this process, cached after the first call.
+///
+/// The runtime probe is unioned with the compile-time features, so anything
+/// the binary was built to assume counts even where the OS probe cannot see
+/// it. Prefer this over [`FeatureSet::detect`], which probes every time.
 pub fn detect_features() -> FeatureSet {
-    use core::sync::atomic::Ordering::Relaxed;
-    const FILLED: u32 = 1 << 31;
-    let v = CACHED_FEATURES.load(Relaxed);
-    if v & FILLED != 0 {
-        return FeatureSet::from_bits(v & !FILLED);
-    }
-    let set = FeatureSet::detect();
-    CACHED_FEATURES.store(set.bits() | FILLED, Relaxed);
-    set
+    FeatureSet::compile_time().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
+}
+
+/// Same answer as [`detect_features`], but always probes again (no cache).
+/// Tests and diagnostics only.
+pub fn detect_features_fresh() -> FeatureSet {
+    FeatureSet::compile_time().union(FeatureSet::detect())
 }
 
 fn level_from_u8(v: u8) -> Option<RiscvLevel> {
@@ -51,7 +52,11 @@ pub fn detect_level() -> RiscvLevel {
 /// Same as [`detect_level`] but always re-probes (no cache). Tests / re-audit only.
 pub fn detect_level_fresh() -> RiscvLevel {
     match shortpath::resolve() {
-        shortpath::ResolvedPath::Assumed(level) => level,
+        shortpath::ResolvedPath::Assumed(level) => {
+            // Compile flags are a floor, not a ceiling: the host may run higher.
+            let host = RiscvLevel::detect(FeatureSet::detect());
+            if host > level { host } else { level }
+        }
         shortpath::ResolvedPath::Baseline => RiscvLevel::detect(FeatureSet::detect()),
     }
 }
@@ -59,6 +64,7 @@ pub fn detect_level_fresh() -> RiscvLevel {
 /// Optional: fill the detect cache at startup. Not required.
 pub fn warm_up() {
     let _ = detect_level();
+    let _ = detect_features();
 }
 
 #[cfg(test)]

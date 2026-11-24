@@ -50,8 +50,10 @@ write-combining memory (PCIe BARs of accelerator cards).
 | `WcTier::Sse` | 16-byte non-temporal | SSE4.1 |
 | `WcTier::Volatile` | volatile `u32` | any arch |
 
-Stores end with `sfence` on x86. `wc_tier()` tells you which tier runs;
-`copy_*_with(tier, ..)` panics if the CPU lacks `tier`. These functions are
+Every copy ends with one store fence after **all** its stores (`sfence` on
+x86, `dmb oshst` on AArch64, `fence ow,ow` on RISC-V), so a doorbell write
+you issue afterwards cannot overtake the data. `wc_tier()` tells you which
+tier runs; `copy_*_with(tier, ..)` panics if the CPU lacks `tier`. These functions are
 `unsafe`: you vouch that the device range is mapped and valid. They are for
 memory behind the mapping (L1, GDDR); device registers need your own
 dword-exact accesses.

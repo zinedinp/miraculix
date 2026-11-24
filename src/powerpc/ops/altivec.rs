@@ -10,11 +10,15 @@ use super::super::{Feature, FeatureSet};
 pub struct Altivec(());
 
 impl Altivec {
-    /// `None` if the CPU (or the compile-time target) lacks AltiVec.
+    /// `None` if the CPU (or the compile-time target) lacks AltiVec. Uses the
+    /// cached [`crate::powerpc::detect_features`].
     pub fn detect() -> Option<Self> {
-        FeatureSet::detect()
-            .contains(Feature::Altivec)
-            .then_some(Altivec(()))
+        Self::from_features(crate::powerpc::detect_features())
+    }
+
+    /// Build a token from a set you already have.
+    pub fn from_features(set: FeatureSet) -> Option<Self> {
+        set.contains(Feature::Altivec).then_some(Altivec(()))
     }
 
     /// `a + b` per lane (`vec_add` / `vaddfp`).

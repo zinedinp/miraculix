@@ -225,3 +225,12 @@ fn every_available_reduce_tier_runs() {
         Some(super::reduce::best_tier())
     );
 }
+
+/// Compile flags are a floor, not a ceiling: a `target-cpu=x86-64-v2` build
+/// on a V3 host must still report V3.
+#[test]
+fn detect_level_is_at_least_the_runtime_level() {
+    let runtime = GenericLevel::detect(FeatureSet::detect());
+    assert!(detect_level() >= runtime, "{:?} < {runtime:?}", detect_level());
+    assert!(detect_level_fresh() >= runtime);
+}

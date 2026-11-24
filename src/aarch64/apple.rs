@@ -148,7 +148,11 @@ pub fn detect_level() -> AppleLevel {
 /// Always shortpath or `sysctlbyname` now; ignores process cache.
 pub fn detect_level_fresh() -> AppleLevel {
     match resolve() {
-        ResolvedPath::Assumed(level) => level,
+        ResolvedPath::Assumed(level) => {
+            // Compile flags are a floor, not a ceiling: the host may run higher.
+            let host = AppleLevel::detect(FeatureSet::detect());
+            if host > level { host } else { level }
+        }
         ResolvedPath::RuntimeDispatch => AppleLevel::detect(FeatureSet::detect()),
     }
 }

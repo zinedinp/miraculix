@@ -25,7 +25,7 @@ pub enum ArmLevel {
     V8_3 = 3,
     /// ARMv8.4-A: +DIT, Uscat, RCPC2, FLAGM, mand. DotProd.
     V8_4 = 4,
-    /// ARMv8.5-A: +SSBS, SB, BTI, RNG, FRINT, FLAGM2, DCPODP.
+    /// ARMv8.5-A: +SSBS, SB, BTI, FRINT, FLAGM2, DCPODP (FEAT_RNG is optional, not required).
     V8_5 = 5,
     /// ARMv8.6-A: +I8MM, BF16, ECV.
     V8_6 = 6,
@@ -122,7 +122,6 @@ impl ArmLevel {
             Feature::Ssbs,
             Feature::Sb,
             Feature::Bti,
-            Feature::Rng,
             Feature::Frint,
             Feature::Flagm2,
             Feature::Dcpodp,
@@ -145,7 +144,6 @@ impl ArmLevel {
             Feature::Ssbs,
             Feature::Sb,
             Feature::Bti,
-            Feature::Rng,
             Feature::Frint,
             Feature::Flagm2,
             Feature::Dcpodp,
@@ -171,7 +169,6 @@ impl ArmLevel {
             Feature::Ssbs,
             Feature::Sb,
             Feature::Bti,
-            Feature::Rng,
             Feature::Frint,
             Feature::Flagm2,
             Feature::Dcpodp,
@@ -200,7 +197,6 @@ impl ArmLevel {
             Feature::Ssbs,
             Feature::Sb,
             Feature::Bti,
-            Feature::Rng,
             Feature::Frint,
             Feature::Flagm2,
             Feature::Dcpodp,
@@ -231,7 +227,6 @@ impl ArmLevel {
             Feature::Ssbs,
             Feature::Sb,
             Feature::Bti,
-            Feature::Rng,
             Feature::Frint,
             Feature::Flagm2,
             Feature::Dcpodp,
@@ -263,7 +258,6 @@ impl ArmLevel {
             Feature::Ssbs,
             Feature::Sb,
             Feature::Bti,
-            Feature::Rng,
             Feature::Frint,
             Feature::Flagm2,
             Feature::Dcpodp,

@@ -234,7 +234,14 @@ unsafe fn xgetbv0() -> u64 {
 
 impl CpuidLeaves {
     fn read() -> Self {
-        let cpuid = CpuId::new();
+        // Our own reader instead of `CpuId::new()`: raw-cpuid only provides
+        // `new()` on 32-bit x86 when SSE is enabled, which left i586 builds
+        // without a probe. The caller checked that `CPUID` exists.
+        fn reader(leaf: u32, sub: u32) -> raw_cpuid::CpuIdResult {
+            let r = crate::x86::arch::__cpuid_count(leaf, sub);
+            raw_cpuid::CpuIdResult { eax: r.eax, ebx: r.ebx, ecx: r.ecx, edx: r.edx }
+        }
+        let cpuid = CpuId::with_cpuid_reader(reader as fn(u32, u32) -> raw_cpuid::CpuIdResult);
         let feature_info = cpuid.get_feature_info();
         let (leaf7_sub1, sha_sm_leaf_eax) = Self::read_leaf7_sub1();
         let os_xsave = feature_info.as_ref().is_some_and(FeatureInfo::has_oxsave);
@@ -608,6 +615,11 @@ impl FeatureSet {
     ///
     /// Prefer [`crate::x86::detect_features`] for normal code.
     pub fn detect() -> Self {
+        // 486-class CPUs (and some 32-bit emulators) have no CPUID at all.
+        #[cfg(target_arch = "x86")]
+        if !has_cpuid() {
+            return Self(0);
+        }
         let leaves = CpuidLeaves::read();
         let mut set = 0u128;
         for &feature in Feature::ALL {
@@ -638,40 +650,20 @@ impl FeatureSet {
     }
 }
 
-/// Process-wide cache for one full [`FeatureSet`] probe (128 bits). No stable
-/// `AtomicU128` on `core`, so the bitset is split into two `AtomicU64` halves
-/// behind an `AtomicBool` filled-flag (`Acquire`/`Release` pair) rather than
-/// [`super::super::level_cache::CachedU8`]'s single-sentinel-byte trick.
-/// `no_std`-safe: `core::sync::atomic` only. Same "parallel first callers may
-/// both probe; same CPU => same result, harmless" contract as `CachedU8`.
-pub(crate) struct CachedFeatureSet {
-    filled: core::sync::atomic::AtomicBool,
-    lo: core::sync::atomic::AtomicU64,
-    hi: core::sync::atomic::AtomicU64,
-}
+/// Process-wide cache for one full [`FeatureSet`] probe. Thin wrapper over
+/// [`crate::level_cache::CachedU128`], shared by every arch that keeps a
+/// 128-bit feature set.
+pub(crate) struct CachedFeatureSet(crate::level_cache::CachedU128);
 
 impl CachedFeatureSet {
     pub(crate) const fn new() -> Self {
-        Self {
-            filled: core::sync::atomic::AtomicBool::new(false),
-            lo: core::sync::atomic::AtomicU64::new(0),
-            hi: core::sync::atomic::AtomicU64::new(0),
-        }
+        Self(crate::level_cache::CachedU128::new())
     }
 
     /// Cached value, or run `init` once (races may double-init; same CPU => same set).
+    #[inline]
     pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
-        use core::sync::atomic::Ordering;
-        if self.filled.load(Ordering::Acquire) {
-            let bits = (self.hi.load(Ordering::Relaxed) as u128) << 64
-                | self.lo.load(Ordering::Relaxed) as u128;
-            return FeatureSet(bits);
-        }
-        let computed = init();
-        self.lo.store(computed.0 as u64, Ordering::Relaxed);
-        self.hi.store((computed.0 >> 64) as u64, Ordering::Relaxed);
-        self.filled.store(true, Ordering::Release);
-        computed
+        FeatureSet(self.0.get_or_init(|| init().0))
     }
 }
 
@@ -729,4 +721,33 @@ mod os_state_tests {
         assert!(!l.cpu_has(Feature::AvxVnni));
         assert!(!l.cpu_has(Feature::Avx10));
     }
+}
+
+/// `true` if the `CPUID` instruction exists: the `EFLAGS.ID` bit (21) can be
+/// toggled. Always true on SSE-era CPUs; only 486-class parts lack it.
+/// (`core::arch::x86::has_cpuid` is still unstable.)
+#[cfg(target_arch = "x86")]
+fn has_cpuid() -> bool {
+    if cfg!(target_feature = "sse") {
+        return true;
+    }
+    let (before, after): (u32, u32);
+    // SAFETY: only pushes and pops EFLAGS and restores the original value.
+    unsafe {
+        core::arch::asm!(
+            "pushfd",
+            "pop {0}",
+            "mov {1}, {0}",
+            "xor {1}, 0x200000",
+            "push {1}",
+            "popfd",
+            "pushfd",
+            "pop {1}",
+            "push {0}",
+            "popfd",
+            out(reg) before,
+            out(reg) after,
+        );
+    }
+    (before ^ after) & 0x0020_0000 != 0
 }

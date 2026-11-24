@@ -1561,7 +1561,7 @@ pub fn abs_i16(a: &[i16], out: &mut [i16]) {
 
 /// `out[i] = a[i].wrapping_mul(b[i])`: AVX2 -> SSE2, both composed (zero-extend,
 /// `pmullw`/`vpmullw`, `packuswb`/`vpackuswb`; no native 8-bit SIMD multiply
-/// exists on x86
+/// exists on x86).
 ///
 /// # Panics
 /// `a.len() != b.len() || out.len() != a.len()`.
@@ -1591,7 +1591,7 @@ pub fn mul_u8(a: &[u8], b: &[u8], out: &mut [u8]) {
 
 /// `out[i] = a[i].wrapping_shl(IMM)`: AVX2 -> SSE2, both composed (widen to
 /// 16-bit lanes + a byte-repeated mask; no native byte-granularity shift
-/// exists on x86
+/// exists on x86).
 ///
 /// # Panics
 /// `out.len() != a.len()`.
@@ -1617,7 +1617,9 @@ pub fn shl_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
     super::auto_down::shl_u8::<IMM>(a, out)
 }
 
-/// `out[i] = a[i].wrapping_shr(IMM)` (logical
+/// `out[i] = ((a[i] as u8) >> IMM) as i8`: a **logical** shift (zeros shift in,
+/// the sign is not kept), like `shr_*` on every type. For Rust's arithmetic
+/// `i8 >>` use [`sra_i8`]. AVX2 -> SSE2, both composed.
 ///
 /// # Panics
 /// `out.len() != a.len()`.
@@ -1645,7 +1647,7 @@ pub fn shr_u8<const IMM: u32>(a: &[u8], out: &mut [u8]) {
 
 /// `out[i] = a[i].wrapping_shr(IMM)` (arithmetic): AVX2 -> SSE2, both composed
 /// (per-byte sign extension + `psraw`/`vpsraw` + `packsswb`/`vpacksswb`). No
-/// AVX-512
+/// AVX-512 rung.
 ///
 /// # Panics
 /// `out.len() != a.len()`.

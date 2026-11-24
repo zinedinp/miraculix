@@ -111,8 +111,8 @@ impl GenericLevel {
 
 /// Helpers for the AVX10 feature bit (CPUID leaf `0x24`).
 ///
-/// Presence is reliable via [`Feature::Avx10`]. Version is best-effort for
-/// diagnostics only, not for correctness gates.
+/// Presence comes from [`Feature::Avx10`]; the version from leaf `0x24`,
+/// read once and cached.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Avx10;
 
@@ -122,16 +122,25 @@ impl Avx10 {
         set.contains(Feature::Avx10)
     }
 
-    /// Best-effort AVX10 version from leaf `0x24` EBX[7:0], or `None` if absent.
+    /// AVX10 version from leaf `0x24` EBX[7:0], or `None` if `set` lacks AVX10.
+    /// `Some(0)` if the CPU reports AVX10 but no leaf `0x24`.
     ///
-    /// Diagnostics only; do not gate correctness on this value.
+    /// Read once and cached for the process (one `CPUID`, which is slow and
+    /// traps to the hypervisor in a VM), so this is cheap enough to gate on.
     pub fn version(set: FeatureSet) -> Option<u8> {
         if !Self::is_present(set) {
             return None;
         }
-        use crate::x86::arch::__cpuid_count;
-
-        let leaf = __cpuid_count(0x24, 0);
-        Some((leaf.ebx & 0xff) as u8)
+        static VERSION: crate::level_cache::CachedU8 = crate::level_cache::CachedU8::new();
+        Some(VERSION.get_or_init(|| {
+            use crate::x86::arch::{__cpuid, __cpuid_count};
+            // Intel answers an out-of-range leaf with the highest basic
+            // leaf's data, so check the maximum first.
+            if __cpuid(0).eax < 0x24 {
+                return 0;
+            }
+            // `0xFF` is the cache's "empty" sentinel; no real version is that high.
+            ((__cpuid_count(0x24, 0).ebx & 0xff) as u8).min(0xFE)
+        }))
     }
 }

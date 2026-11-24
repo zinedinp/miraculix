@@ -4,14 +4,15 @@
 element-wise core and the full reduction family.
 
 **Probe:** auxv `AT_HWCAP` for the base letters (Linux, Android, FreeBSD),
-plus `riscv_hwprobe(2)` on Linux for `Zvfh` / `Zvfbfmin` / `Zvfbfwma`.
-Compile-time features elsewhere.
+plus `riscv_hwprobe(2)` on Linux and Android for `Zvfh` / `Zvfbfmin` /
+`Zvfbfwma`. Always unioned with the compile-time features, so a `+v` build
+always takes the RVV path.
 
 | Item | Role |
 |---|---|
 | `detect_level() -> RiscvLevel` | `Gc` or `Vector` |
 | `detect_features()` | feature bitset, cached |
-| `warm_up()`, `detect_level_fresh()`, `shortpath::verify_or_panic()` | as on x86 ([caching](../detection-and-caching.md)) |
+| `warm_up()`, `detect_*_fresh()`, `shortpath::verify_or_panic()` | as on x86 ([caching](../detection-and-caching.md)) |
 | `ops::rvv::Rvv` | f32/i32 element-wise, FMA, reductions, compare/compress, `exp_f32`, `dot_i8_i32`, BFP_B row encode/decode. `asm!` loops that work for **any VLEN** |
 | `ops::zvfh::Zvfh`, `ops::zvfbf::{Zvfbfmin, Zvfbfwma}` | half / bfloat16 vectors |
 | `riscv::auto` | `add/sub/mul/fmadd_f32`, `add_i32` plus every reduction (same names as `x86::reduce`) |

@@ -109,7 +109,11 @@ pub fn detect_level() -> ArmLevel {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn detect_level_fresh() -> ArmLevel {
     match shortpath::resolve() {
-        shortpath::ResolvedPath::Assumed(level) => level,
+        shortpath::ResolvedPath::Assumed(level) => {
+            // Compile flags are a floor, not a ceiling: the host may run higher.
+            let host = ArmLevel::detect(FeatureSet::detect());
+            if host > level { host } else { level }
+        }
         shortpath::ResolvedPath::Baseline => ArmLevel::detect(FeatureSet::detect()),
     }
 }

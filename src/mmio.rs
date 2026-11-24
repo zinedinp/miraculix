@@ -3,16 +3,18 @@
 //!
 //! | Tier | Store body | Load body | Needs |
 //! |---|---|---|---|
-//! | [`WcTier::Avx512`] | `vmovntdq` 64 B (one full write-combining line, one PCIe TLP) | `vmovntdqa` 64 B | AVX-512F |
+//! | [`WcTier::Avx512`] | `vmovntdq` 64 B (one full write-combining line; usually one PCIe write, not guaranteed) | `vmovntdqa` 64 B | AVX-512F |
 //! | [`WcTier::Avx2`] | `vmovntdq` 32 B | `vmovntdqa` 32 B | AVX2 |
 //! | [`WcTier::Sse`] | `movntdq` 16 B | `movntdqa` 16 B | SSE4.1 (loads) |
 //! | [`WcTier::Volatile`] | volatile `u32` | volatile `u32` | - |
 //!
 //! Head and tail bytes go through volatile `u32` accesses where the address is 4-aligned and
 //! single bytes otherwise, so a device that takes 4-byte granular accesses sees no wider ones.
-//! Stores end with `sfence` on x86: non-temporal stores are weakly ordered even against later
-//! uncached stores (a doorbell, a mailbox word). The streaming loads read a write-combining line
-//! once instead of one bus round trip per access.
+//! Every copy ends with one store fence (`sfence` on x86, `dmb oshst` on AArch64, `fence ow,ow`
+//! on RISC-V) after **all** its stores, the volatile head and tail included: stores to
+//! write-combining memory are weakly ordered even against later uncached stores (a doorbell, a
+//! mailbox word). The streaming loads read a write-combining line once instead of one bus round
+//! trip per access.
 //!
 //! Only for memory behind the mapping (L1, GDDR): device registers need the caller's own
 //! dword-exact accesses.
@@ -38,9 +40,9 @@ impl WcTier {
             #[cfg(target_arch = "x86_64")]
             WcTier::Sse => crate::x86::ops::sse::sse41::Sse41::detect().is_some(),
             #[cfg(target_arch = "x86_64")]
-            WcTier::Avx2 => crate::x86::bundles::V3::detect().is_some(),
+            WcTier::Avx2 => crate::x86::ops::avx::avx2::Avx2::detect().is_some(),
             #[cfg(target_arch = "x86_64")]
-            WcTier::Avx512 => crate::x86::bundles::V4::detect().is_some(),
+            WcTier::Avx512 => crate::x86::ops::avx512::avx512f::Avx512f::detect().is_some(),
             #[cfg(not(target_arch = "x86_64"))]
             _ => false,
         }
@@ -113,6 +115,40 @@ pub unsafe fn copy_to_wc_with(tier: WcTier, dst: *mut u8, src: &[u8]) {
     let whole = 0;
     // SAFETY: the tail lies inside the caller's range.
     unsafe { volatile_write(dst.add(head + whole), &rest[whole..]) };
+    // Every store above (volatile head and tail included) went to
+    // write-combining memory and is weakly ordered, so fence once after all
+    // of them: a later doorbell or mailbox write must not overtake the data.
+    wc_store_fence();
+}
+
+/// Orders every earlier store to write-combining / device memory before any
+/// later store, as seen by the device.
+#[inline]
+fn wc_store_fence() {
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: SSE is part of the x86_64 baseline.
+    unsafe {
+        core::arch::x86_64::_mm_sfence()
+    };
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: a barrier, no memory access of its own. `oshst`: the device
+    // sits in the outer shareable domain, and only stores need ordering.
+    unsafe {
+        core::arch::asm!("dmb oshst", options(nostack, preserves_flags))
+    };
+    #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+    // SAFETY: a fence, no memory access of its own. `ow, ow`: device-output
+    // and memory writes before, the same after.
+    unsafe {
+        core::arch::asm!("fence ow, ow", options(nostack, preserves_flags))
+    };
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv32",
+        target_arch = "riscv64"
+    )))]
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
 }
 
 /// [`copy_from_wc`] with a given tier.
@@ -247,7 +283,6 @@ mod x86 {
                 );
                 i += 16;
             }
-            _mm_sfence();
         }
     }
 
@@ -270,7 +305,6 @@ mod x86 {
                 );
                 i += 16;
             }
-            _mm_sfence();
         }
     }
 
@@ -293,7 +327,6 @@ mod x86 {
                 );
                 i += 16;
             }
-            _mm_sfence();
         }
     }
 

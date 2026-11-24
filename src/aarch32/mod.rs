@@ -68,7 +68,11 @@ pub fn detect_level() -> FpuLevel {
 /// Same as [`detect_level`] but always re-probes (no cache). Tests / re-audit only.
 pub fn detect_level_fresh() -> FpuLevel {
     match shortpath::resolve() {
-        shortpath::ResolvedPath::Assumed(level) => level,
+        shortpath::ResolvedPath::Assumed(level) => {
+            // Compile flags are a floor, not a ceiling: the host may run higher.
+            let host = FpuLevel::detect(FeatureSet::detect());
+            if host > level { host } else { level }
+        }
         shortpath::ResolvedPath::RuntimeDispatch => FpuLevel::detect(FeatureSet::detect()),
     }
 }
