@@ -318,11 +318,11 @@ impl Feature {
 	];
 
     /// Bit index inside a [`FeatureSet`].
-    pub fn bit(self) -> u32 {
-        Self::ALL
-            .iter()
-            .position(|&f| f == self)
-            .expect("Feature::ALL must list every variant") as u32
+    pub const fn bit(self) -> u32 {
+        // The enum has no explicit discriminants and `ALL` lists the
+        // variants in declaration order, so the discriminant *is* the index
+        // in `ALL` (checked by `bit_is_the_index_in_all`). O(1), no search.
+        self as u32
     }
 }
 
@@ -833,5 +833,20 @@ impl CachedFeatureSet {
     #[inline]
     pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
         FeatureSet(self.0.get_or_init(|| init().0))
+    }
+}
+
+#[cfg(test)]
+mod bit_index_tests {
+    use super::Feature;
+
+    /// `Feature::bit` relies on declaration order matching `Feature::ALL`;
+    /// reordering one without the other fails here, not silently at runtime.
+    #[test]
+    fn bit_is_the_index_in_all() {
+        for (i, &f) in Feature::ALL.iter().enumerate() {
+            assert_eq!(f.bit() as usize, i, "{f:?}");
+        }
+        assert!(Feature::ALL.len() <= 128, "FeatureSet is a u128");
     }
 }

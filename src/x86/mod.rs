@@ -119,6 +119,7 @@ fn level_from_u8(v: u8) -> Option<GenericLevel> {
 /// }
 /// # }
 /// ```
+#[inline]
 pub fn detect_level() -> GenericLevel {
     let v = CACHED_LEVEL.get_or_init(|| detect_level_fresh() as u8);
     level_from_u8(v).expect("cached GenericLevel discriminant")
@@ -162,6 +163,7 @@ pub fn detect_level_fresh() -> GenericLevel {
 /// }
 /// # }
 /// ```
+#[inline]
 pub fn detect_features() -> FeatureSet {
     shortpath::compile_time_features().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
 }

@@ -1206,7 +1206,9 @@ pub fn gemm_f32_kernel_with(
         // SAFETY: tier chosen from detection; lengths checked above.
         TierKind::Avx512 => unsafe { gemm_kernel_avx512(kc, a.as_ptr(), b.as_ptr(), acc) },
         TierKind::Avx2Fma => unsafe { gemm_kernel_avx2_fma(kc, a.as_ptr(), b.as_ptr(), acc) },
-        TierKind::Avx | TierKind::Avx2 => unsafe { gemm_kernel_avx(kc, a.as_ptr(), b.as_ptr(), acc) },
+        TierKind::Avx | TierKind::Avx2 => unsafe {
+            gemm_kernel_avx(kc, a.as_ptr(), b.as_ptr(), acc)
+        },
         TierKind::Sse2 => unsafe { gemm_kernel_sse2(kc, a.as_ptr(), b.as_ptr(), acc) },
         TierKind::Scalar => crate::reduce_common::gemm_kernel_scalar(kc, a, b, acc),
     }
@@ -1355,7 +1357,9 @@ pub fn compress_gt_f32_with(tier: Tier, a: &[f32], threshold: f32, out: &mut [u3
         // SAFETY: as above. The kernels write at most `done` indices plus 16 slack lanes
         // that stay below `a.len() <= out.len()` (see `compress_avx512`).
         TierKind::Avx512 => unsafe { compress_avx512(a, threshold, out) },
-        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe { compress_avx(a, threshold, out) },
+        TierKind::Avx | TierKind::Avx2 | TierKind::Avx2Fma => unsafe {
+            compress_avx(a, threshold, out)
+        },
         TierKind::Sse2 => unsafe { compress_sse2(a, threshold, out) },
         TierKind::Scalar => (0, 0),
     };

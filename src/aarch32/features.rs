@@ -134,11 +134,11 @@ impl Feature {
 	];
 
     /// Bit index inside a [`FeatureSet`].
-    pub fn bit(self) -> u32 {
-        Self::ALL
-            .iter()
-            .position(|&f| f == self)
-            .expect("Feature::ALL must list every variant") as u32
+    pub const fn bit(self) -> u32 {
+        // The enum has no explicit discriminants and `ALL` lists the
+        // variants in declaration order, so the discriminant *is* the index
+        // in `ALL` (checked by `bit_is_the_index_in_all`). O(1), no search.
+        self as u32
     }
 }
 
@@ -245,6 +245,15 @@ impl FeatureSet {
         #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "freebsd")))]
         {
             // Fail-closed: only bits we can prove from cfg (no full HWCAP).
+            Self::compile_time()
+        }
+    }
+
+    /// Bits the compile flags guarantee (`-C target-feature`, `target-cpu`).
+    /// [`crate::aarch32::detect_features`] unions these with the runtime probe.
+    #[inline]
+    pub(crate) fn compile_time() -> Self {
+        {
             #[allow(unused_mut, reason = "mutated under target_feature cfgs")]
             let mut set = 0u128;
             #[cfg(target_feature = "vfp2")]
@@ -270,8 +279,37 @@ impl FeatureSet {
             {
                 set |= 1 << Feature::Vfpd32.bit();
             }
+            // Armv8 extensions in AArch32 state. `aes` alone, not PMULL: the
+            // Arm ARM lets a core have AES without the 64-bit polynomial multiply.
+            #[cfg(target_feature = "aes")]
+            {
+                set |= 1 << Feature::Aes.bit();
+            }
+            // LLVM's `sha2` covers both SHA1 and SHA256.
+            #[cfg(target_feature = "sha2")]
+            {
+                set |= 1 << Feature::Sha1.bit();
+                set |= 1 << Feature::Sha2.bit();
+            }
+            #[cfg(target_feature = "crc")]
+            {
+                set |= 1 << Feature::Crc32.bit();
+            }
+            #[cfg(target_feature = "dotprod")]
+            {
+                set |= 1 << Feature::Dotprod.bit();
+            }
+            #[cfg(target_feature = "i8mm")]
+            {
+                set |= 1 << Feature::I8mm.bit();
+            }
             Self(set)
         }
+    }
+
+    /// Features present in **either** set (bitwise OR).
+    pub fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
     }
 
     pub fn contains(self, feature: Feature) -> bool {
@@ -298,5 +336,20 @@ impl CachedFeatureSet {
     #[inline]
     pub(crate) fn get_or_init(&self, init: impl FnOnce() -> FeatureSet) -> FeatureSet {
         FeatureSet(self.0.get_or_init(|| init().0))
+    }
+}
+
+#[cfg(test)]
+mod bit_index_tests {
+    use super::Feature;
+
+    /// `Feature::bit` relies on declaration order matching `Feature::ALL`;
+    /// reordering one without the other fails here, not silently at runtime.
+    #[test]
+    fn bit_is_the_index_in_all() {
+        for (i, &f) in Feature::ALL.iter().enumerate() {
+            assert_eq!(f.bit() as usize, i, "{f:?}");
+        }
+        assert!(Feature::ALL.len() <= 128, "FeatureSet is a u128");
     }
 }

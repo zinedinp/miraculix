@@ -1,6 +1,6 @@
 [package]
 name = "miraculix"
-version = "0.6.8-beta"
+version = "0.6.9-beta"
 authors = ["Zinedin Polic"]
 edition = "2024"
 rust-version = "1.100.0"
@@ -9,7 +9,24 @@ readme = "README.md"
 repository = "https://github.com/zinedinp/miraculix"
 license = "MIT OR Apache-2.0"
 keywords = ["simd", "avx", "avx512", "sse", "neon"]
-categories = ["hardware-support"]
+categories = ["hardware-support", "no-std"]
+# Publish only what a dependent needs: the library, its docs and licenses.
+# Leaves out `scripts/` (C/C++ oracles, stub archives) and test-only probes.
+include = ["/src/**", "/doc/**", "/README.md", "/RUST_VERSIONS.md", "/LICENSE-*"]
+
+# docs.rs builds the host (x86_64) docs by default, so every other arch
+# module would be missing from the published docs.
+[package.metadata.docs.rs]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "armv7-unknown-linux-gnueabihf",
+    "riscv64gc-unknown-linux-gnu",
+    "loongarch64-unknown-linux-gnu",
+    "powerpc64le-unknown-linux-gnu",
+    "wasm32-unknown-unknown",
+]
 
 [features]
 default = ["wider-bus-lift", "wasm-simd"]

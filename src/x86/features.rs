@@ -176,11 +176,11 @@ impl Feature {
 	];
 
     /// Bit index inside a [`super::FeatureSet`].
-    pub fn bit(self) -> u32 {
-        Self::ALL
-            .iter()
-            .position(|&f| f == self)
-            .expect("Feature::ALL must list every variant") as u32
+    pub const fn bit(self) -> u32 {
+        // The enum has no explicit discriminants and `ALL` lists the
+        // variants in declaration order, so the discriminant *is* the index
+        // in `ALL` (checked by `bit_is_the_index_in_all`). O(1), no search.
+        self as u32
     }
 }
 
@@ -284,7 +284,13 @@ mod darwin {
         let mut len = core::mem::size_of::<c_int>();
         // SAFETY: NUL-terminated name; `value`/`len` describe a `c_int` buffer.
         let ret = unsafe {
-            sysctlbyname(name.as_ptr(), (&raw mut value).cast(), &mut len, core::ptr::null_mut(), 0)
+            sysctlbyname(
+                name.as_ptr(),
+                (&raw mut value).cast(),
+                &mut len,
+                core::ptr::null_mut(),
+                0,
+            )
         };
         ret == 0 && value != 0
     }
@@ -327,7 +333,12 @@ impl CpuidLeaves {
         // without a probe. The caller checked that `CPUID` exists.
         fn reader(leaf: u32, sub: u32) -> raw_cpuid::CpuIdResult {
             let r = crate::x86::arch::__cpuid_count(leaf, sub);
-            raw_cpuid::CpuIdResult { eax: r.eax, ebx: r.ebx, ecx: r.ecx, edx: r.edx }
+            raw_cpuid::CpuIdResult {
+                eax: r.eax,
+                ebx: r.ebx,
+                ecx: r.ecx,
+                edx: r.edx,
+            }
         }
         let cpuid = CpuId::with_cpuid_reader(reader as fn(u32, u32) -> raw_cpuid::CpuIdResult);
         let feature_info = cpuid.get_feature_info();
@@ -771,7 +782,13 @@ mod os_state_tests {
         assert!(l.os_enables(Feature::Sse42));
         assert!(l.os_enables(Feature::Aes));
         assert!(l.os_enables(Feature::Gfni));
-        for f in [Feature::Avx, Feature::Avx2, Feature::Fma, Feature::F16c, Feature::Sm3] {
+        for f in [
+            Feature::Avx,
+            Feature::Avx2,
+            Feature::Fma,
+            Feature::F16c,
+            Feature::Sm3,
+        ] {
             assert!(!l.os_enables(f), "{f:?}");
         }
         assert!(!l.os_enables(Feature::Avx512f));
@@ -848,5 +865,20 @@ mod darwin_tests {
         assert_eq!(parse_release(b"21.3.0.1"), None);
         assert_eq!(parse_release(b"x.3.0"), None);
         assert!((21, 2, 9) < (21, 3, 0) && (22, 0, 0) > (21, 3, 0));
+    }
+}
+
+#[cfg(test)]
+mod bit_index_tests {
+    use super::Feature;
+
+    /// `Feature::bit` relies on declaration order matching `Feature::ALL`;
+    /// reordering one without the other fails here, not silently at runtime.
+    #[test]
+    fn bit_is_the_index_in_all() {
+        for (i, &f) in Feature::ALL.iter().enumerate() {
+            assert_eq!(f.bit() as usize, i, "{f:?}");
+        }
+        assert!(Feature::ALL.len() <= 128, "FeatureSet is a u128");
     }
 }

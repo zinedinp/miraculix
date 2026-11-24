@@ -214,6 +214,7 @@ pub use tiers::WasmLevel;
 /// Feature bits for this binary right now: `cfg` plus the runtime flags. Not
 /// cached (two atomic loads), so a later [`enable_simd128`] takes effect at
 /// once. Same name as on the other arches; used by `auto_up`.
+#[inline]
 pub fn detect_features() -> FeatureSet {
     FeatureSet::detect()
 }
@@ -227,6 +228,7 @@ pub fn detect_features_fresh() -> FeatureSet {
 ///
 /// Not cached, unlike the other arches: a cache would freeze the level from
 /// before a later [`enable_simd128`]. Never below [`shortpath::resolve`].
+#[inline]
 pub fn detect_level() -> WasmLevel {
     detect_level_fresh()
 }

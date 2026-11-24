@@ -1,6 +1,7 @@
 //! Compile-time collapse of runtime dispatch. Gc always present (like NEON).
 //! Key: `target_feature = "v"` only (rva20/rva22 are LLVM codegen names, not
-//! usable in `cfg` except `v` / `rva23u64`; Feature is only the 7 HWCAP bits).
+//! usable in `cfg` except `v` / `rva23u64`). Finer bits (Zvfh, ...) come from
+//! [`super::detect_features`], which also unions the compile-time features.
 
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
 use super::FeatureSet;

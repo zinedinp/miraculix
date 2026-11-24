@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # Run the tests on real hardware of each major platform. Token tests skip
+  # themselves where the runner lacks a feature, so these cover what the
+  # runner's CPU has (no AVX-512 on GitHub's x86 runners).
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+      - run: cargo test --release
+      - run: cargo test --no-default-features
+
+  # A `-C target-cpu` build must report at least the host's level
+  # (compile flags are a floor) and still pass.
+  test-target-cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+        env:
+          RUSTFLAGS: -D warnings -C target-cpu=x86-64-v2
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      # Not `-D warnings` yet: `formats` / `reduce_common` carry known lints.
+      - run: cargo clippy --all-targets
+        env:
+          RUSTFLAGS: ""
+      - run: cargo doc --no-deps
+        env:
+          RUSTFLAGS: ""
+
+  # Type-check every target the crate supports, including ones no runner can
+  # execute. Bare-metal targets build the library only (tests need `std`).
+  cross-check:
+    name: check (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-unknown-linux-gnu, tests: true }
+          - { target: aarch64-apple-darwin, tests: true }
+          - { target: aarch64-apple-ios, tests: true }
+          - { target: aarch64-pc-windows-msvc, tests: true }
+          - { target: x86_64-apple-darwin, tests: true }
+          - { target: i686-unknown-linux-gnu, tests: true }
+          - { target: i586-unknown-linux-gnu, tests: true }
+          - { target: armv7-unknown-linux-gnueabihf, tests: true }
+          - { target: riscv64gc-unknown-linux-gnu, tests: true }
+          - { target: loongarch64-unknown-linux-gnu, tests: true }
+          - { target: powerpc64le-unknown-linux-gnu, tests: true }
+          - { target: wasm32-unknown-unknown, tests: true }
+          - { target: thumbv6m-none-eabi, tests: false }
+          - { target: thumbv7em-none-eabi, tests: false }
+          - { target: riscv32imac-unknown-none-elf, tests: false }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: matrix.tests
+        run: cargo check --tests --target ${{ matrix.target }}
+      - if: ${{ !matrix.tests }}
+        run: cargo check --target ${{ matrix.target }}
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.100.0
+      - run: cargo check --tests

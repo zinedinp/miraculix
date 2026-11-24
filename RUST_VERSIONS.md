@@ -79,10 +79,10 @@ These do **not** set the crate MSRV.
 
 ## `aarch64::ops`
 
-Own file: [RUST_VERSIONS_AARCH64.md](RUST_VERSIONS_AARCH64.md). Headline:
-DotProd (`stdarch_neon_dotprod`, 1.98.0) is what sets the current MSRV - it
-was raised from 1.94 so that DotProd and JSCVT use their now-stable
-intrinsics instead of `asm!`. Extensions whose intrinsics are still unstable
+DotProd (`stdarch_neon_dotprod`, 1.98.0) is the newest intrinsic family the
+aarch64 ops need: the floor was raised from 1.94 to 1.98 so that DotProd and
+JSCVT use their now-stable intrinsics instead of `asm!`. (The crate-wide
+1.100 above was set later, together with the `wasm32-wasip3` test target.) Extensions whose intrinsics are still unstable
 (I8MM, FCMA, FRINTTS, BF16, SM3/SM4, RNG, SVE) go through `asm!` under stable
 target features. SME / SVE2.1 target features are still
 unstable, so those stay detect-only.

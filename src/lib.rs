@@ -87,8 +87,9 @@
 //! | `warm_up()` | Optional: fill cache at startup |
 //! | `shortpath::verify_or_panic()` | Startup check if binary assumes a high tier |
 //!
-//! x86 and aarch64 also have `detect_features` / `detect_features_fresh` for
-//! the raw per-extension bitset used by auto dispatch.
+//! Every arch also has `detect_features` / `detect_features_fresh` for the
+//! raw per-extension bitset that tokens and auto dispatch use. See the
+//! repository `doc/detection-and-caching.md` for costs and caching.
 //!
 //! ## Further reading
 //!

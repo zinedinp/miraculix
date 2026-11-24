@@ -1,11 +1,11 @@
 //! Process-wide `AtomicU8` cache for arch tier enums (`#[repr(u8)]`).
 //! `EMPTY = 0xFF` so a valid level may be `0` (V8_0, M1, Gc, Scalar, etc).
 
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 #[cfg(not(target_has_atomic = "64"))]
 use core::sync::atomic::AtomicU32;
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::AtomicU64;
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// Sentinel: cache not filled. Not a valid tier discriminant.
 pub const EMPTY: u8 = 0xFF;
@@ -72,7 +72,12 @@ impl CachedU128 {
             #[cfg(target_has_atomic = "64")]
             parts: [AtomicU64::new(0), AtomicU64::new(0)],
             #[cfg(not(target_has_atomic = "64"))]
-            parts: [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
+            parts: [
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+            ],
         }
     }
 
@@ -91,10 +96,9 @@ impl CachedU128 {
     #[inline]
     fn load_parts(&self) -> u128 {
         let w = (u128::BITS / self.parts.len() as u32) as usize;
-        self.parts
-            .iter()
-            .enumerate()
-            .fold(0u128, |acc, (i, p)| acc | (u128::from(p.load(Ordering::Relaxed)) << (i * w)))
+        self.parts.iter().enumerate().fold(0u128, |acc, (i, p)| {
+            acc | (u128::from(p.load(Ordering::Relaxed)) << (i * w))
+        })
     }
 
     fn store_parts(&self, v: u128) {

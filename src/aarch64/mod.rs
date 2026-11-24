@@ -56,6 +56,7 @@ static CACHED_FEATURES: CachedFeatureSet = CachedFeatureSet::new();
 /// assert!(set.contains(Feature::Neon)); // mandatory on AArch64
 /// # }
 /// ```
+#[inline]
 pub fn detect_features() -> FeatureSet {
     shortpath::compile_time_features().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
 }
@@ -100,6 +101,7 @@ fn arm_level_from_u8(v: u8) -> Option<ArmLevel> {
 ///
 /// No app `init` required. Prefer over [`detect_level_fresh`] in normal code.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[inline]
 pub fn detect_level() -> ArmLevel {
     let v = CACHED_LEVEL.get_or_init(|| detect_level_fresh() as u8);
     arm_level_from_u8(v).expect("cached ArmLevel discriminant")
@@ -129,6 +131,7 @@ pub fn warm_up() {
 
 /// Best Apple Silicon **tier** for this process (cached).
 #[cfg(target_os = "macos")]
+#[inline]
 pub fn detect_level() -> AppleLevel {
     apple::detect_level()
 }
@@ -150,6 +153,7 @@ pub fn warm_up() {
 
 /// Best Windows-on-Arm **tier** for this process (cached).
 #[cfg(target_os = "windows")]
+#[inline]
 pub fn detect_level() -> SnapdragonLevel {
     windows::detect_level()
 }

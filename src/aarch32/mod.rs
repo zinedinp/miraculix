@@ -32,11 +32,13 @@ pub use tiers::FpuLevel;
 static CACHED_LEVEL: CachedU8 = CachedU8::new();
 static CACHED_FEATURES: CachedFeatureSet = CachedFeatureSet::new();
 
-/// Raw feature bits for this process (cached after first call). Prefer over
+/// Raw feature bits for this process (cached after first call), unioned with
+/// the compile-time features. Prefer over
 /// [`detect_features_fresh`] in normal code; used by [`auto_up`] so cascades
 /// do not re-read `auxv` on every call.
+#[inline]
 pub fn detect_features() -> FeatureSet {
-    CACHED_FEATURES.get_or_init(FeatureSet::detect)
+    FeatureSet::compile_time().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
 }
 
 /// Same answer as [`detect_features`], but always re-probes `auxv`.
@@ -44,7 +46,7 @@ pub fn detect_features() -> FeatureSet {
 /// Does not read or write the process cache. Prefer [`detect_features`] in
 /// normal code.
 pub fn detect_features_fresh() -> FeatureSet {
-    FeatureSet::detect()
+    FeatureSet::compile_time().union(FeatureSet::detect())
 }
 
 fn level_from_u8(v: u8) -> Option<FpuLevel> {
@@ -60,6 +62,7 @@ fn level_from_u8(v: u8) -> Option<FpuLevel> {
 /// Best FPU/NEON tier for this process (cached after first call).
 ///
 /// No app `init` required. Prefer over [`detect_level_fresh`] in normal code.
+#[inline]
 pub fn detect_level() -> FpuLevel {
     let v = CACHED_LEVEL.get_or_init(|| detect_level_fresh() as u8);
     level_from_u8(v).expect("cached FpuLevel discriminant")

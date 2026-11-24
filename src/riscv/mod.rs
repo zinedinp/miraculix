@@ -23,6 +23,7 @@ static CACHED_FEATURES: features::CachedFeatureSet = features::CachedFeatureSet:
 /// The runtime probe is unioned with the compile-time features, so anything
 /// the binary was built to assume counts even where the OS probe cannot see
 /// it. Prefer this over [`FeatureSet::detect`], which probes every time.
+#[inline]
 pub fn detect_features() -> FeatureSet {
     FeatureSet::compile_time().union(CACHED_FEATURES.get_or_init(FeatureSet::detect))
 }
@@ -44,6 +45,7 @@ fn level_from_u8(v: u8) -> Option<RiscvLevel> {
 /// Best capability tier for this process (cached after first call).
 ///
 /// No app `init` required. Prefer over [`detect_level_fresh`] in normal code.
+#[inline]
 pub fn detect_level() -> RiscvLevel {
     let v = CACHED_LEVEL.get_or_init(|| detect_level_fresh() as u8);
     level_from_u8(v).expect("cached RiscvLevel discriminant")

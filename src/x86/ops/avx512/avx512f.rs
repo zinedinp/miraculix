@@ -90,7 +90,8 @@ impl Avx512f {
     /// process really runs at `level` or above ([`crate::x86::detect_level`]),
     /// so a made-up `GenericLevel` cannot conjure a token. One cached read.
     pub fn from_level(level: GenericLevel) -> Option<Self> {
-        (level.required_features().contains(&Feature::Avx512f) && crate::x86::detect_level() >= level)
+        (level.required_features().contains(&Feature::Avx512f)
+            && crate::x86::detect_level() >= level)
             .then_some(Avx512f(()))
     }
 

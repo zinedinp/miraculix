@@ -218,10 +218,16 @@ fn every_available_reduce_tier_runs() {
     let want = super::reduce::dot_f32(&a, &a);
     for tier in super::reduce::available_tiers().into_iter().flatten() {
         let got = super::reduce::dot_f32_with(tier, &a, &a);
-        assert!((got - want).abs() <= 1e-3 * want.abs(), "{tier:?}: {got} vs {want}");
+        assert!(
+            (got - want).abs() <= 1e-3 * want.abs(),
+            "{tier:?}: {got} vs {want}"
+        );
     }
     assert_eq!(
-        super::reduce::available_tiers().into_iter().flatten().last(),
+        super::reduce::available_tiers()
+            .into_iter()
+            .flatten()
+            .last(),
         Some(super::reduce::best_tier())
     );
 }
@@ -231,6 +237,10 @@ fn every_available_reduce_tier_runs() {
 #[test]
 fn detect_level_is_at_least_the_runtime_level() {
     let runtime = GenericLevel::detect(FeatureSet::detect());
-    assert!(detect_level() >= runtime, "{:?} < {runtime:?}", detect_level());
+    assert!(
+        detect_level() >= runtime,
+        "{:?} < {runtime:?}",
+        detect_level()
+    );
     assert!(detect_level_fresh() >= runtime);
 }

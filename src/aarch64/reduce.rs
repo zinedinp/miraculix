@@ -22,8 +22,15 @@ use core::arch::aarch64::*;
 use super::ops::neon::neon::Neon;
 use crate::reduce_common::{EXP_HI, EXP_LO, LN2_HI, LN2_LO, LOG2E, P, exp_scalar};
 
+#[inline]
 fn hw() -> Option<Neon> {
-    Neon::detect()
+    // Every aarch64 target except `*-softfloat` is built with `neon`, so the
+    // binary already assumes it: no cache read per call.
+    if cfg!(target_feature = "neon") {
+        Some(Neon::assume_baseline())
+    } else {
+        Neon::detect()
+    }
 }
 
 // ---------------------------------------------------------------- bf16 -> f32
@@ -249,7 +256,11 @@ pub fn exp_f32(a: &[f32], out: &mut [f32]) {
 pub fn exp_f32_with(neon: Option<Neon>, a: &[f32], out: &mut [f32]) {
     assert_eq!(a.len(), out.len());
     // SAFETY: see `bf16_to_f32_with`.
-    let done = if neon.is_some() { unsafe { exp_neon(a, out) } } else { 0 };
+    let done = if neon.is_some() {
+        unsafe { exp_neon(a, out) }
+    } else {
+        0
+    };
     for i in done..a.len() {
         out[i] = exp_scalar(a[i]);
     }
@@ -615,7 +626,12 @@ pub fn compress_gt_f32(a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
 
 /// [`compress_gt_f32`] with Neon resolved once: pass `Neon::detect()` (or `None` for
 /// the portable path).
-pub fn compress_gt_f32_with(neon: Option<Neon>, a: &[f32], threshold: f32, out: &mut [u32]) -> usize {
+pub fn compress_gt_f32_with(
+    neon: Option<Neon>,
+    a: &[f32],
+    threshold: f32,
+    out: &mut [u32],
+) -> usize {
     assert!(out.len() >= a.len(), "out must hold a.len() indices");
     // SAFETY: see `bf16_to_f32_with`; writes stay below `a.len() <= out.len()`.
     let (mut n, done) = if neon.is_some() {
