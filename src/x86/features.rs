@@ -828,7 +828,7 @@ mod os_state_tests {
 /// toggled. Always true on SSE-era CPUs; only 486-class parts lack it.
 /// (`core::arch::x86::has_cpuid` is still unstable.)
 #[cfg(target_arch = "x86")]
-fn has_cpuid() -> bool {
+pub(crate) fn has_cpuid() -> bool {
     if cfg!(target_feature = "sse") {
         return true;
     }

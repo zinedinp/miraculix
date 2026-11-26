@@ -159,6 +159,9 @@ pub mod formats;
 /// Copies into and out of write-combining memory (PCIe BARs of accelerator cards).
 pub mod mmio;
 
+/// Cache sizes (L1d, L1i, L2, L3) per core class, detected once like the SIMD features.
+pub mod cache;
+
 /// Cache prefetch hints (read, write, instruction) on every architecture that has them.
 pub mod prefetch;
 

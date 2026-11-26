@@ -1,6 +1,6 @@
 [package]
 name = "miraculix"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Zinedin Polic"]
 edition = "2024"
 rust-version = "1.100.0"
@@ -79,12 +79,15 @@ half = "2.7.1"
 [target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
 raw-cpuid = { version = "11.6.0", default-features = false }
 
-# OS probes only (not bare-metal / none): getauxval or elf_aux_info / sysctl.
-[target.'cfg(all(any(target_arch = "aarch64", target_arch = "arm", target_arch = "riscv32", target_arch = "riscv64", target_arch = "loongarch32", target_arch = "loongarch64", target_arch = "powerpc", target_arch = "powerpc64"), any(target_os = "linux", target_os = "android", target_os = "freebsd", target_vendor = "apple")))'.dependencies]
+# OS probes only (not bare-metal / none): getauxval or elf_aux_info / sysctl
+# for CPU features (non-x86), sysfs / sysctl for `cache` (every arch).
+[target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_vendor = "apple"))'.dependencies]
 libc = { version = "0.2.191", default-features = false }
 
-[target.'cfg(all(target_arch = "aarch64", target_os = "windows"))'.dependencies]
-windows-sys = { version = ">=0.59, <=0.61", default-features = false, features = ["Win32_System_Threading"] }
+# aarch64: `IsProcessorFeaturePresent`; every arch: `cache` topology
+# (`GetLogicalProcessorInformationEx`, buffer on the process heap).
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = ">=0.59, <=0.61", default-features = false, features = ["Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_Memory"] }
 
 [profile.release]
 opt-level = 3

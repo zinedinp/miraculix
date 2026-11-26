@@ -2,6 +2,51 @@
 
 These exist on every target and need no token.
 
+## `cache`
+
+Cache sizes per core class, detected once and cached like the SIMD features:
+`cache::detect()` (process-wide, one atomic load after the first call),
+`cache::detect_fresh()`, `cache::warm_up()`.
+
+The result is a `CacheMatrix`: one row (`CoreClass`) per distinct cache
+configuration, one column per `Level` (`L1d`, `L1i`, `L2`, `L3`). Each cell
+is a `Cache` with `size`, `line`, `ways` and `shared_by` (logical CPUs
+sharing the instance). Identical rows merge, so a symmetric CPU has one row.
+Asymmetric CPUs get several: Intel P/E cores, Arm big.LITTLE, Apple P/E
+clusters, AMD X3D with one stacked CCD.
+
+```rust
+use miraculix::cache::{self, Level};
+
+let m = cache::detect();
+// Fits on every core class, even with SMT siblings busy.
+let l1d = m.min_per_thread(Level::L1d).unwrap_or(32 * 1024);
+// Huffman decode table: 4-byte entries in half of L1d.
+let bits = cache::table_bits(l1d / 2, 4).clamp(9, 13);
+println!("{m}"); // prints the matrix as a table
+```
+
+| Target | Source | Rows |
+|---|---|---|
+| Linux / Android (any arch) | sysfs `cpuN/cache/indexM/` | every online CPU |
+| Windows | `GetLogicalProcessorInformationEx(RelationCache)` | every CPU |
+| macOS / iOS | `sysctlbyname("hw.perflevelN.*")` | one per performance level |
+| x86 fallback, no OS | `CPUID` leaf 4 / `0x8000_001D` / AMD `0x8000_0005..6` | calling core only |
+| PowerPC Linux without sysfs | auxv `AT_L1I/L1D/L2/L3_CACHE*` | one |
+| wasm, other bare metal | - | none (`CacheMatrix::EMPTY`; fill one with `CacheMatrix::push`) |
+
+Things to know:
+
+- `CPUID` describes only the core it runs on. On a hybrid Intel CPU without
+  an OS source the matrix has one row and `is_complete()` is `false`. Its
+  `shared_by` is the maximum the core *could* share with (it counts SMT
+  threads even with SMT off).
+- Row order is detection order and does not say which class is faster.
+- `min_size`, `max_size`, `min_per_thread` and `line_size` cover every CPU,
+  even past `MAX_CLASSES` (8) rows.
+- Apple reports no associativity (`ways == 0`) and no SLC; Arm device trees
+  sometimes report levels without sizes. Unknown fields are `0`.
+
 ## `prefetch`
 
 `miraculix::prefetch::{read, write, instruction}` with a `Locality` (`L1`,

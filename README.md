@@ -48,7 +48,7 @@ All topics: [doc/](doc/README.md).
 | [PowerPC](doc/platforms/powerpc.md) (consoles, G4/G5, POWER) | ✓ | ✓ VSX, VMX, paired singles | ✓ | `Vsx`, `Isa300`, `Isa31`, `Mma`, `Vmx`, `PairedSingle`, `Vmx128` | - |
 | [LoongArch](doc/platforms/loongarch.md) | ✓ | - | - | - | - |
 
-Every target also gets [`prefetch`, `formats` and `mmio`](doc/modules.md).
+Every target also gets [`cache`, `prefetch`, `formats` and `mmio`](doc/modules.md).
 
 ## The four ways to use it
 

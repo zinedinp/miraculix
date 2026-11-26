@@ -12,7 +12,7 @@ example. These pages go deeper on one topic each.
 | [Kernel macros](kernel-macros.md) | you write multi-op SIMD kernels with `avx2_fn!` and friends |
 | [Slice-op rules and cross-arch differences](cross-arch-semantics.md) | you share code between x86 and Arm, or care about NaN / overflow |
 | [Op finder](op-finder.md) | you know the Intel / Arm intrinsic and need the miraculix name |
-| [Architecture-independent modules](modules.md) | you need `prefetch`, number `formats`, or `mmio` copies |
+| [Architecture-independent modules](modules.md) | you need cache sizes (`cache`), `prefetch`, number `formats`, or `mmio` copies |
 | [Testing](testing.md) | you want to run the tests under emulators or oracles |
 
 ## Platforms
